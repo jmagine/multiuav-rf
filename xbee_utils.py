@@ -15,13 +15,13 @@ import sys
 import time
 
 MSG = ''
-MSG = MSG.join(['a' for i in range(92)])
+MSG = MSG.join(['a' for i in range(255)])
 
-MAX_LEN = 92
+MAX_LEN = 255
 PORT = 'COM5'
 BAUD_RATE = 921600
 REMOTE_NODE_ID = 'xb1'
-NUM_TX = 100
+NUM_TX = 50
 #CHANNEL = 11
 SC = "7FFF"
 #plt.ion()
@@ -109,6 +109,8 @@ class XBee_Controller():
         elif len(cmd) > 0 and cmd[0] == 't':
           self.tx()
           plt.plot(range(len(self.times)), self.times)
+          plt.xlabel("Packet")
+          plt.ylabel("Time to send")
           #plt.show(block=False)
           plt.draw()
           plt.pause(0.001)
@@ -132,12 +134,12 @@ class XBee_Controller():
     last = time.time()
     for i in range(NUM_TX):
       #print('[%d] TX' % (i))
-      #device.send_data_async(self.remote_device, MSG)
-      self.device.send_data(self.remote_device, MSG)
-      #self.device.send_data(self.remote_device, str(time.time()))
+      #self.device.send_data_async(self.remote_device, MSG)
+      #self.device.send_data(self.remote_device, MSG)
+      self.device.send_data(self.remote_device, str(time.time()))
       curr = time.time()
       self.times.append(curr - last)
-      time.sleep(0.1)
+      #time.sleep(0.1)
       last = time.time()
       #time.sleep(0.01)
 

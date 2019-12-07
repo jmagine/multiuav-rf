@@ -14,9 +14,9 @@ import time
 from scipy import signal
 
 '''[Global vars]------------------------------------------------------------'''
-FILE_IQ_SAMP = 'cap_30000000_915000000.0_48.dat'
+FILE_IQ_SAMP = 'rx.dat'
 #FILE_IQ_SAMP = 'cap_30000000_2415000000.0_48.0.dat'
-FREQ_SAMP = 30e6
+FREQ_SAMP = 25e6
 N_SAMP = 3000
 PLOT = True
 
