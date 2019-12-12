@@ -14,71 +14,48 @@ import matplotlib.pyplot as plt
 import sys
 import time
 
-MSG = ''
+import xbee_utils
+
+MSG = ""
 MSG = MSG.join(['a' for i in range(92)])
 
 MAX_LEN = 92
-PORT = 'COM5'
+PORT = "COM5"
 BAUD_RATE = 921600
-REMOTE_NODE_ID = 'xb1'
+REMOTE_NODE_ID = "xb1"
 NUM_TX = 100
-
-remote_device = None
-
-def callback_dev_discovered(remote):
-  global remote_device
-  print("device discovered: %s" % (remote))
-  remote_device = remote
-
-def callback_disc_finished(status):
-  if status == NetworkDiscoveryStatus.SUCCESS:
-    print("Discovery process finished successfully.")
-  else:
-    print("There was an error discovering devices: %s" % (status.description))
-
-print(len(MSG))
-print(MSG)
+SCCC = "7fff"
 device = XBeeDevice(PORT, BAUD_RATE)
-
+c = xbee_utils.XBee_Controller(device, PORT)
 try:
-  device.open()
-  xbee_network = device.get_network()
-  xbee_network.set_discovery_timeout(25) #1000 sec timeout
-  xbee_network.clear()
+  #open connection and write params
+  c.device.open()
+  #self.set_channel(SC)
 
-  xbee_network.add_device_discovered_callback(callback_dev_discovered)
-  xbee_network.add_discovery_process_finished_callback(callback_disc_finished)
-  xbee_network.start_discovery_process()
+  #find remote device
+  c.setup_connection()
 
-  print("[%s] discovering devices" % (PORT))
-
-  while remote_device is None:
-    time.sleep(0.1)
-
-  times = []
-  print("[%s] tx start" % (PORT))
-
-  start = time.time()
-  last = time.time()
-  for i in range(NUM_TX):
-    #print('[%d] TX' % (i))
-    #device.send_data_async(remote_device, MSG)
-    device.send_data(remote_device, MSG)
-    curr = time.time()
-    times.append(curr - last)
-    last = curr
-
-  end = time.time()
-  print("successful. t: %.3f" % (end - start))
-
-  plt.plot(range(len(times)), times)
-  plt.show()
-
+  #accept user input
+  cmd = ""
+  while cmd != 'q':
+    cmd = input("[cmd] [t] run tx [c] change channel [q] quit --- :")
+    if len(cmd) > 0 and cmd[0] == 'q':
+      break
+    elif len(cmd) > 0 and cmd[0] == 't':
+      c.tx(data=MSG)
+      plt.plot(range(len(c.times)), c.times)
+      plt.xlabel("Packet")
+      plt.ylabel("Time to send")
+      #plt.show(block=False)
+      plt.draw()
+      plt.pause(0.001)
+    elif len(cmd) > 0 and cmd[0] == 'c':
+      arg = cmd.strip('\n').split(' ')[1]
+      print("[cmd] change channel: %s" % (arg))
+      c.remote_device = None
+      c.set_channel(arg)
+      c.setup_connection()
 except KeyboardInterrupt:
-  print("[%s] closing device" % (PORT))
-  if device is not None and device.is_open():
-    device.close()
+  print("[cmd] Ctrl+C received. Stopping")
 finally:
-  print("[%s] closing device" % (PORT))
-  if device is not None and device.is_open():
-    device.close()
+  c.close_device()
