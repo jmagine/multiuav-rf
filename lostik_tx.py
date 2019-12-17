@@ -6,7 +6,8 @@ import argparse
 
 from serial.threaded import LineReader, ReaderThread
 
-FREQ = 920e6
+#FREQ = 920e6
+freqs = [902e6 + 1e6 * i for i in range(27)]
 
 parser = argparse.ArgumentParser(description='LoRa Radio mode sender.')
 parser.add_argument('port', help="Serial port descriptor")
@@ -17,7 +18,7 @@ class PrintLines(LineReader):
     def connection_made(self, transport):
         print("connection made")
         self.transport = transport
-        self.send_cmd('radio set freq %d' % (FREQ))
+        self.send_cmd('radio set freq %d' % (freqs[0]))
         self.send_cmd("sys set pindig GPIO11 0")
         self.send_cmd('sys get ver')
         self.send_cmd('radio get mod')
@@ -42,9 +43,12 @@ class PrintLines(LineReader):
         self.send_cmd("sys set pindig GPIO11 1")
         txmsg = 'radio tx %x%x' % (int(time.time()), self.frame_count)
         self.send_cmd(txmsg)
-        time.sleep(.3)
+        time.sleep(1)
         self.send_cmd("sys set pindig GPIO11 0")
         self.frame_count = self.frame_count + 1
+        time.sleep(0.5)
+        self.send_cmd('radio set freq %d' % (freqs[self.frame_count % len(freqs)]))
+        self.send_cmd('radio get freq')
 
     def send_cmd(self, cmd, delay=.5):
         print("SEND: %s" % cmd)
@@ -56,4 +60,4 @@ ser = serial.Serial(args.port, baudrate=57600)
 with ReaderThread(ser, PrintLines) as protocol:
     while(1):
         protocol.tx()
-        time.sleep(10)
+        #time.sleep(1)
