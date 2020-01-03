@@ -21,7 +21,22 @@ BAUD = 57600
 try:
   lsc = lostik_utils.LS_Controller(PORT, BAUD)
   lsc.start()
-  lsc.join()
+  lsc.write_serial("sys get ver", block=True)
+
+  lsc.write_serial("radio set sf sf7", block=True)
+  lsc.write_serial("radio set bw 500", block=True)
+  lsc.write_serial("mac pause", block=True)
+  lsc.write_serial("radio set pwr 10", block=True)
+  lsc.write_serial("sys set pindig GPIO11 0", block=True)
+
+  lsc.write_serial("radio get mod", block=True)
+  lsc.write_serial("radio get freq", block=True)
+  lsc.write_serial("radio get sf", block=True)
+  lsc.write_serial("radio get bw", block=True)
+
+  while True:
+    time.sleep(0.1)
+
 except KeyboardInterrupt:
   print("[main] Ctrl+C rx, stopping controller")
   lsc.send_cmd("end_thread")
