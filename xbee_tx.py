@@ -15,22 +15,23 @@ import sys
 import time
 
 import xbee_utils
+import config
 
 MSG = ""
 MSG = MSG.join(['a' for i in range(92)])
 
 MAX_LEN = 92
-PORT = "COM5"
-BAUD_RATE = 921600
+PORT = config.PORT_XBEE_TX
+BAUD_RATE = config.BAUD_XBEE
 REMOTE_NODE_ID = "xb1"
 NUM_TX = 100
-SCCC = "7fff"
+SC = "0010"
 device = XBeeDevice(PORT, BAUD_RATE)
 c = xbee_utils.XBee_Controller(device, PORT)
 try:
   #open connection and write params
   c.device.open()
-  #self.set_channel(SC)
+  c.set_channel(SC)
 
   #find remote device
   c.setup_connection()
@@ -50,11 +51,15 @@ try:
       plt.draw()
       plt.pause(0.001)
     elif len(cmd) > 0 and cmd[0] == 'c':
-      arg = cmd.strip('\n').split(' ')[1]
-      print("[cmd] change channel: %s" % (arg))
-      c.remote_device = None
-      c.set_channel(arg)
-      c.setup_connection()
+      arg = cmd.strip('\n').split(' ')
+      if len(arg) > 1:
+        arg = cmd.strip('\n').split(' ')[1]
+        print("[cmd] change channel: %s" % (arg))
+        c.remote_device = None
+        c.set_channel(arg)
+        c.setup_connection()
+      else:
+        print("[cmd] need to specify channel bits")
 except KeyboardInterrupt:
   print("[cmd] Ctrl+C received. Stopping")
 finally:

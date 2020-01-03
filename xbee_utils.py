@@ -48,6 +48,7 @@ class XBee_Controller():
   
   def set_channel(self, sc):
     print("[%s] Writing SC: %s" % (self.port, sc))
+    self.device.get_network().clear()
     self.device.set_parameter("SC", bytearray.fromhex(sc))
 
     #wait for channel to change
@@ -97,6 +98,7 @@ class XBee_Controller():
       self.device.send_data(self.remote_device, str(data))
       curr = time.time()
       self.times.append(curr - last)
+      self.print_channel()
       last = time.time()
 
     end = time.time()
