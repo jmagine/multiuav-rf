@@ -8,8 +8,11 @@
 ---*-----------------------------------------------------------------------*'''
 
 import serial
+import sys
 import threading
 import time
+
+N_BYTES = 255
 
 class LS_Controller(threading.Thread):
   def __init__(self, port, baudrate=57600, prt=True):
@@ -75,7 +78,7 @@ class LS_Controller(threading.Thread):
     return lines
 
   def tx(self, msg, block=True):
-    self.write_serial("radio tx %x" % (int(msg)), block=block)
+    self.write_serial("radio tx %.255x" % (int(msg)), block=block)
 
   def run(self):
     while not self.end_thread:
@@ -89,7 +92,17 @@ class LS_Controller(threading.Thread):
           if line == 'radio_tx_ok':
             self.tx_count += 1
 
-      time.sleep(0.0001)
+      time.sleep(0.001)
 
     self.ser.close()
     print("[%s] closed serial port" % (self.name))
+
+  def print_diagnostics(self, t_start, t_end):
+    if t_start == t_end:
+      return
+
+    print("[diag]\ttx c: %-4d tx_byte: %-6d tx t: %.4f tx_kbps: %.4f" % (self.tx_count, 
+                       self.tx_count * N_BYTES, 
+                       t_end - t_start, 
+                       self.tx_count * N_BYTES / ((t_end - t_start) * 1000)))
+    sys.stdout.flush()

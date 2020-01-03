@@ -16,10 +16,12 @@ import lostik_utils
 #FREQ = 920e6
 #FREQS = [902e6 + 1e6 * i for i in range(27)]
 
-PORT = '/dev/ttyUSB0'
-#PORT = 'COM4'
-
+#PORT = '/dev/ttyUSB0'
+PORT = 'COM4'
 BAUD = 57600
+BIG_PACKET = time.time()
+
+tx_start = time.time()
 
 try:
   lsc = lostik_utils.LS_Controller(PORT, baudrate=BAUD, prt=False)
@@ -36,21 +38,15 @@ try:
   lsc.write_serial("radio get freq", block=True)
   lsc.write_serial("radio get sf", block=True)
   lsc.write_serial("radio get bw", block=True)
-
+  #lsc.write_serial("radio rx 0", block=True)
   tx_start = time.time()
   while True:
-    lsc.tx(time.time(), block=False)
-    time.sleep(0.001)
+    lsc.tx(BIG_PACKET, block=False)
+    time.sleep(0.01)
     
     if lsc.tx_count % 100 == 0:
-      tx_end = time.time()
-      if tx_end - tx_start == 0: continue
-
-      tx_count = lsc.tx_count
-      print("[main] tx count: %d" % (tx_count))
-      print("[main] tx bytes: %d" % (tx_count * 8))
-      print("[main] tx time: %f" % (tx_end - tx_start))
-      print("[main] tx kbps: %f" % (tx_count * 8 / ((tx_end - tx_start) * 1000)))
+      tx_curr = time.time()
+      lsc.print_diagnostics(tx_start, tx_curr)
 
 except KeyboardInterrupt:
   print("[main] Ctrl+C rx, stopping controller")
@@ -59,9 +55,5 @@ except KeyboardInterrupt:
   tx_end = time.time()
   lsc.send_cmd("end_thread")
   tx_count = lsc.tx_count
+  lsc.print_diagnostics(tx_start, tx_end)
   lsc.join()
-
-  print("[main] tx count: %d" % (tx_count))
-  print("[main] tx bytes: %d" % (tx_count * 8))
-  print("[main] tx time: %f" % (tx_end - tx_start))
-  print("[main] tx kbps: %f" % (tx_count * 8 / ((tx_end - tx_start) * 1000)))
