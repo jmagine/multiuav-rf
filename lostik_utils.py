@@ -12,31 +12,42 @@ import sys
 import threading
 import time
 
-N_BYTES = 255
+N_BYTES = 230
 
 class LS_Controller(threading.Thread):
   def __init__(self, port, baudrate=57600, prt=True):
     super(LS_Controller, self).__init__()
-    self.buf = []
-    self.buf_pointer = 0
-    self.tx_count = 0
-    self.rx_count = 0
+    
+    #threading/control params
     self.daemon = True
     self.end_thread = False
-    self.print = prt
 
+    #for serial cmds to/from LoStik
     self.ser = serial.Serial(port, baudrate=baudrate, parity=serial.PARITY_NONE, stopbits=serial.STOPBITS_ONE)
     self.ser.reset_input_buffer()
     self.ser.reset_output_buffer()
     self.name = self.ser.name
 
+    #custom serial buffer
+    self.ser_rx = []
+    self.buf = []
+    self.tx_count = 0
+    self.rx_count = 0
+    self.wait_rx = threading.Event()
+    self.wait_tx = threading.Event()
+
+    #other
+    self.print = prt
+
     print("[%s] connected" % (self.name))
 
+  #send cmd from main thread to this one
   def send_cmd(self, cmd):
     if cmd == 'end_thread':
       print("[%s] stopping lostik controller" % (self.name))
       self.end_thread = True
 
+  #write a command to RN2903 through serial link
   def write_serial(self, cmd, block=False):
     val = ('%s\r\n' % (cmd)).encode('utf-8')
     end = ""
@@ -45,64 +56,114 @@ class LS_Controller(threading.Thread):
     self.ser.flush()
 
     if block:
-      res = []
-      while len(res) == 0:
+      while len(self.ser_rx) == 0:
         self.read_serial()
-        res = self.proc_buf()
+        time.sleep(0.01)
         
-      end = "\t--- ser rx: %s" % (res[0])
-    if self.print: print("[%s] ser tx: %-32s%s" % (self.name, val, end))
+      end = "\t--- ser rx: %s" % (self.ser_rx[0])
+      del self.ser_rx[0]
 
+    if self.print:
+      print("[%s] ser tx: %-32s%s" % (self.name, cmd, end))
+
+  #read from serial if there are new things to read
   def read_serial(self):
+
+    #if nothing to read, just continue
+    if self.ser.in_waiting == 0:
+      return
+
     self.buf += [chr(c) for c in self.ser.read(self.ser.in_waiting)]
 
-  def proc_buf(self):
+    #piece outputs together into lines
     try:
       startline = 0
       endline = 0
       lines = []
 
-      if len(self.buf) > self.buf_pointer:
-        for i, c in enumerate(self.buf):
-          if c == '\n' and self.buf[i - 1] == '\r':
-            endline = i
-            lines.append("".join(self.buf[startline:endline-1]))
-            startline = endline + 1
-            self.rx_count += 1
-        if endline != 0:
-          self.buf = self.buf[endline+1:]
+      for i, c in enumerate(self.buf):
+        if c == '\n' and self.buf[i - 1] == '\r':
+          endline = i
+          lines.append("".join(self.buf[startline:endline-1]))
+          startline = endline + 1
+          #self.rx_count += 1
+      if endline != 0:
+        self.buf = self.buf[endline+1:]
     except ValueError:
+      #print("value error")
       pass
 
-    self.buf_pointer = len(self.buf)
-    return lines
+    if lines:
+      self.ser_rx.extend(lines)
 
+  #transmit a message through radio
   def tx(self, msg, block=True):
-    self.write_serial("radio tx %.255x" % (int(msg)), block=block)
+    self.write_serial("radio tx %.230x" % (int(msg)), block=False)
 
+    if block:
+      self.wait_tx.clear()
+      self.wait_tx.wait(timeout=1)
+
+  #wait until message is received
+  def rx(self, block=True):
+    self.write_serial("radio rx 0", block=False)
+
+    if block:
+      self.wait_rx.clear()
+      self.wait_rx.wait(timeout=1)
+
+  #run thread, command loop
   def run(self):
     while not self.end_thread:
       self.read_serial()
-      lines = self.proc_buf()
       
-      if len(lines) > 0:
-        #print(self.frame_count, lines)
-        for line in lines:
-          if self.print: print(line)
-          if line == 'radio_tx_ok':
-            self.tx_count += 1
+      if len(self.ser_rx) > 0:
+        line = self.ser_rx[0]
+        if self.print: 
+          print(line)
 
-      time.sleep(0.001)
+        if line == 'radio_tx_ok':
+          print("tx %d" % (self.tx_count))
+          self.tx_count += 1
+          self.wait_tx.set()
+
+        elif line == 'err' or line == 'radio_err':
+          self.wait_tx.set()
+          self.wait_rx.set()
+          #pass
+        elif line == 'busy' or line == 'invalid_param':
+          pass
+        elif len(line.split(" ")) > 1:
+          if line.split(" ")[0] == 'radio_rx':
+            if self.print:
+              print("[RX] %s" % (line.split(" ")[-1]))
+            print("rx %d" % (self.rx_count))
+            #TODO do something with the payload, put it somewhere
+            self.rx_count += 1
+            self.wait_rx.set()
+
+        del self.ser_rx[0]
 
     self.ser.close()
     print("[%s] closed serial port" % (self.name))
 
-  def print_diagnostics(self, t_start, t_end):
+  #print tx link characteristics
+  def print_diagnostics(self, t_start, t_end, t_last=None, tx_count_last=0, rx_count_last=0):
     if t_start == t_end:
       return
 
-    print("[diag]\ttx c: %-4d tx_byte: %-6d tx t: %.4f tx_kbps: %.4f" % (self.tx_count, 
-                       self.tx_count * N_BYTES, 
-                       t_end - t_start, 
-                       self.tx_count * N_BYTES / ((t_end - t_start) * 1000)))
+    if t_last is None:
+      t_last = t_start
+      tx_count_last = 0
+      rx_count_last = 0
+
+    print("[diag] t: %.4f tx c: %-4d tx_kbps: %.4f tx_kbps_total: %.4f rx_c: %-4d rx_kbps: %.4f rx_kbps_total: %.4f " % (t_end - t_start, 
+                       self.tx_count, 
+                       (self.tx_count - tx_count_last) * N_BYTES / ((t_end - t_last) * 1000),
+                       self.tx_count * N_BYTES / ((t_end - t_start) * 1000),
+
+                       self.rx_count,
+                       (self.rx_count - rx_count_last) * N_BYTES / ((t_end - t_last) * 1000),
+                       self.rx_count * N_BYTES / ((t_end - t_start) * 1000))
+                       )
     sys.stdout.flush()
