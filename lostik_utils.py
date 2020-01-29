@@ -12,7 +12,7 @@ import sys
 import threading
 import time
 
-N_BYTES = 230
+N_BYTES = 64
 
 class LS_Controller(threading.Thread):
   def __init__(self, port, baudrate=57600, prt=True):
@@ -69,6 +69,7 @@ class LS_Controller(threading.Thread):
   #read from serial if there are new things to read
   def read_serial(self):
 
+    #t_start = time.time()
     #if nothing to read, just continue
     if self.ser.in_waiting == 0:
       return
@@ -95,26 +96,57 @@ class LS_Controller(threading.Thread):
 
     if lines:
       self.ser_rx.extend(lines)
+    
+    #print("[read_serial] profile: %.4f" % (time.time() - t_start))
 
   #transmit a message through radio
   def tx(self, msg, block=True):
-    self.write_serial("radio tx %.230x" % (int(msg)), block=False)
+    
+    t_start = time.time()
 
-    if block:
-      self.wait_tx.clear()
-      self.wait_tx.wait(timeout=1)
+    self.write_serial("radio tx %.64x" % (int(msg)), block=False)
+    self.tx_count += 1
+
+    while block:
+      self.read_serial()
+      if len(self.ser_rx) > 0:
+        line = self.ser_rx[0]
+
+        if line == 'radio_tx_ok':
+          block = False
+
+        del self.ser_rx[0]
+
+    print("[tx] profile: %.4f" % (time.time() - t_start))
 
   #wait until message is received
   def rx(self, block=True):
     self.write_serial("radio rx 0", block=False)
 
-    if block:
-      self.wait_rx.clear()
-      self.wait_rx.wait(timeout=1)
+    while block:
+      self.read_serial()
+      if len(self.ser_rx) > 0:
+        line = self.ser_rx[0]
+
+        if line == 'busy' or line == 'radio_err':
+          del self.ser_rx[0]
+          self.write_serial("radio rx 0", block=False)
+          continue
+
+        if line == 'ok':
+          del self.ser_rx[0]
+          continue
+
+        self.rx_count += 1
+        print("[rx] %s" % (line))
+        block = False
+        del self.ser_rx[0]
 
   #run thread, command loop
   def run(self):
     while not self.end_thread:
+      time.sleep(1)
+      '''
       self.read_serial()
       
       if len(self.ser_rx) > 0:
@@ -123,9 +155,9 @@ class LS_Controller(threading.Thread):
           print(line)
 
         if line == 'radio_tx_ok':
+          self.wait_tx.set()
           print("tx %d" % (self.tx_count))
           self.tx_count += 1
-          self.wait_tx.set()
 
         elif line == 'err' or line == 'radio_err':
           self.wait_tx.set()
@@ -143,6 +175,7 @@ class LS_Controller(threading.Thread):
             self.wait_rx.set()
 
         del self.ser_rx[0]
+        '''
 
     self.ser.close()
     print("[%s] closed serial port" % (self.name))
