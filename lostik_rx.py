@@ -20,8 +20,8 @@ import lostik_utils
 PORT = 'COM8'
 BAUD = 57600
 
-#RADIO_PARAMS = ['mod lora', 'sf sf7', 'bw 500', 'pwr 2']
-RADIO_PARAMS = ['mod fsk', 'bitrate 50000']
+RADIO_PARAMS = ['mod lora', 'sf sf7', 'bw 500', 'pwr 2']
+#RADIO_PARAMS = ['mod fsk', 'bitrate 50000']
 
 t_start = time.time()
 
@@ -48,11 +48,11 @@ try:
   lsc.write_serial("radio get freq", block=True)
   lsc.write_serial("radio get bw", block=True)
 
-  lsc.write_serial("radio get bt", block=True)
-  lsc.write_serial("radio get pwr", block=True)
+  #lsc.write_serial("radio get bt", block=True)
+  #lsc.write_serial("radio get pwr", block=True)
 
-  #lsc.write_serial("radio get sf", block=True)
-  #lsc.write_serial("radio get bw", block=True)
+  lsc.write_serial("radio get sf", block=True)
+  lsc.write_serial("radio get bw", block=True)
 
   lsc.start()
 

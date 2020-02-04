@@ -17,6 +17,8 @@ N_BYTES = 64
 class LS_Controller(threading.Thread):
   def __init__(self, port, baudrate=57600, prt=True):
     super(LS_Controller, self).__init__()
+
+    #TODO hashtable for last seen freqs
     
     #threading/control params
     self.daemon = True
@@ -142,10 +144,13 @@ class LS_Controller(threading.Thread):
         block = False
         del self.ser_rx[0]
 
+    #TODO update hashtable if correct packet rxed
+
   #run thread, command loop
   def run(self):
     while not self.end_thread:
       time.sleep(1)
+      
       '''
       self.read_serial()
       

@@ -17,11 +17,11 @@ import lostik_utils
 #FREQS = [902e6 + 1e6 * i for i in range(27)]
 
 #PORT = '/dev/ttyUSB0'
-PORT = 'COM7'
+PORT = 'COM3'
 BAUD = 57600
 
-#RADIO_PARAMS = ['mod lora', 'sf sf7', 'bw 500', 'pwr 2']
-RADIO_PARAMS = ['mod fsk', 'bitrate 50000', 'pwr 10']
+RADIO_PARAMS = ['mod lora', 'sf sf7', 'bw 500', 'pwr 20']
+#RADIO_PARAMS = ['mod fsk', 'bitrate 50000', 'pwr 2']
 
 t_start = time.time()
 
@@ -48,11 +48,11 @@ try:
   lsc.write_serial("radio get freq", block=True)
   lsc.write_serial("radio get bw", block=True)
 
-  lsc.write_serial("radio get bt", block=True)
-  lsc.write_serial("radio get pwr", block=True)
+  #lsc.write_serial("radio get bt", block=True)
+  #lsc.write_serial("radio get pwr", block=True)
 
-  #lsc.write_serial("radio get sf", block=True)
-  #lsc.write_serial("radio get bw", block=True)
+  lsc.write_serial("radio get sf", block=True)
+  lsc.write_serial("radio get bw", block=True)
 
   lsc.start()
 
