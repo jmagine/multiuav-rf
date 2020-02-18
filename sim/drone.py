@@ -21,5 +21,8 @@ class drone():
 
     self.rx_freq = 902e6
 
+  def set_vel(self, v):
+    
+
   
 
