@@ -15,5 +15,5 @@ import drone
 e = env.env()
 e.setup()
 
-for i in range(100):
+for i in range(1000):
   e.tick()

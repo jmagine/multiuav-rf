@@ -18,7 +18,7 @@ class drone():
     self.pos = np.array(p)
     self.pos_ref = np.array(p)
     self.vel = 0
-    self.vel_max = np.array(v_max)
+    self.vel_max = v_max
     self.ttt = 0
   
   def callback(self):
@@ -26,7 +26,7 @@ class drone():
 
   #updates pos_ref and the corresponding velocity vector
   def set_pos_ref(self, p):
-    self.pos_ref = p
+    self.pos_ref = np.array(p)
 
     #compute direction vector if pos_ref changes
     vel = self.pos_ref - self.pos
