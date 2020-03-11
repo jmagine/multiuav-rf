@@ -52,7 +52,7 @@ class drone():
     #self.ki = 2 * self.kp / 1.0 
     #self.kd = self.kp * 0.01 / 8
   
-  def callback():
+  def callback(self):
     pass
 
   def run(self, ref_pos, vx=None, vy=None):
