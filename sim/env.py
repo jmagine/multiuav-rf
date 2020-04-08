@@ -7,13 +7,14 @@
   Description: Environment module for simulation
 ---*-----------------------------------------------------------------------*'''
 
-import numpy as np
 import math
 import matplotlib.pyplot as plt
+import mosek.fusion as mf
+import networkx as nx
+import numpy as np
 import random
 from scipy.spatial import Voronoi, voronoi_plot_2d, KDTree
 import time
-import networkx as nx
 
 import drone
 import bs
@@ -98,6 +99,8 @@ class env():
     #update positions of all drones
     for d in self.drn:
       d.tick()
+
+    self.shen_sca(len(self.drn), 10)
 
     #evaluate capacity of network
 
@@ -238,6 +241,98 @@ class env():
         noise_total += power_fspl(pw_tx, freq, dist(pos_noise, pos_rx))
 
     return BANDWIDTH * math.log2(1 + pw_rx / noise_total)
+
+  def shen_sca(self, K, M):
+
+    p = np.zeros((2, K, M))
+    q = np.zeros((2, K, M))
+    a = np.zeros((2, K, M))
+    d = np.zeros((K, K, M))
+    I = np.zeros((K, M))
+    gt = np.zeros((K))
+    gamma = 1
+
+    eps = 0.1 #iteration tolerance
+    
+    
+    #init trajectory q and power p foor all k and n
+    #store 2 sets of q and p for previous and current iteration
+    #TODO
+
+    #determine initial R given p and q
+    for n in range(M):
+      for k in range(K):
+        a[0][k][n] = math.sqrt(p[0][k][n])
+
+        I[k][n] = 0
+        for j in range(K):
+          d[j][k][n] = dist(q[0][j][n], gt[k])**2 + 0.0001
+          I[k][n] += gamma * a[0][j][n]**2 / d[j][k][n]
+        I[k][n] -= gamma * a[0][k][n]**2 / d[k][k][n]
+    shen_r = shen_rpq(a, q, d, I, gt, gamma)
+
+    while True:
+      #update a, d, I with p, q
+      for n in range(M):
+        for k in range(K):
+          a[0][k][n] = math.sqrt(p[0][k][n])
+          
+          I[k][n] = 0
+          for j in range(K):
+            d[j][k][n] = dist(q[0][j][n], gt[k])**2 + 0.0001
+            I[k][n] += gamma * a[0][j][n]**2 / d[j][k][n]
+          I[k][n] -= gamma * a[0][k][n]**2 / d[k][k][n]
+
+      #update a, q by solving complex problem 23
+      m = mf.Model('shen_sca')
+      var_a = m.variable('a', [K, M], mf.Domain.greaterThan(0.0))
+      var_q = m.variable('q', [K, M], mf.Domain.greaterThan(0.0))
+      var_ar = m.variable('ar', [K, M], mf.Domain.greaterThan(0.0))
+      var_qr = m.variable('qr', [K, M], mf.Domain.greaterThan(0.0))
+
+      #m.constraint('level_speed', mf.Expr())
+      #m.constraint('min_sep', mf.Expr())
+
+      #update R by eq 4 using shen_rpq
+      shen_r_new = shen_rpq(a, q, d, I, gt, gamma)
+      print("R: %.2f" % (shen_r_new))
+
+      #continue if prev r was 0
+      if shen_r == 0: 
+        shen_r = shen_r_new
+        continue
+
+      #termination condition
+      if ((shen_r_new - shen_r) / (shen_r)) < eps:
+        break
+
+      #update iteration
+      shen_r = shen_r_new
+      a[0] = a[1]
+      q[0] = q[1]
+
+    p = np.multiply(a[1], a[1])
+    return p, q
+
+def shen_rpq(a, q, d, I, gt, gamma):
+  K, M = I.shape
+
+  r_temp = np.zeros((K))
+  r_total = np.zeros((M))
+
+  #nth time slot
+  for n in range(M):
+    
+    r_total[n] = 0
+    #kth uav-gt pair
+    for k in range(K):
+      #interference over all other uavs for kth pair
+      r_temp[k] = I[k][n] + gamma * a[0][k][n]**2 / d[k][k][n]
+      
+      #calculate rate for kth pair at time n
+      r_total[n] += math.log10(1 + r_temp[k]) - math.log10(1 + I[k][n])
+
+  return sum(r_total)
 
 def dist(pos_0, pos_1):
   return np.linalg.norm(np.array(pos_0) - np.array(pos_1))
