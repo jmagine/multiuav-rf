@@ -16,4 +16,5 @@ e = env.env()
 e.setup()
 
 for i in range(1000):
-  e.tick()
+#  e.tick()
+  pass
