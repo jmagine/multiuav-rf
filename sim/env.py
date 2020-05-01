@@ -26,7 +26,8 @@ import poi
 #TODO point of interest model
 
 N_DRONES = 4
-M = 10
+M = 20
+
 N_POI = 100
 P_BOUNDS = [[-1, 1], [-1, 1]]
 VIEW_BORDER = 0.1
@@ -293,7 +294,11 @@ class env():
     a = np.zeros((K, M))
     d = np.zeros((K, K, M))
     I = np.zeros((K, M))
+    gt = GT
+    gamma = 0.01
+    eps = 0.01 #itr tolerance
 
+    #drone trajectory init
     for i in range(N_DRONES):
       q[i][0][0] = random.uniform(self.p_bounds[0][0], self.p_bounds[0][1])
       q[i][0][1] = random.uniform(self.p_bounds[1][0], self.p_bounds[1][1])
@@ -303,17 +308,13 @@ class env():
       for n in range(M):
         q[i][n][0] = q[i][0][0] + x_step * n
         q[i][n][1] = q[i][0][1] + y_step * n
-
+    
+    #drone power init
     for n in range(M):
       for k in range(K):
         p[k][n] = 1
 
-    gt = GT
-    gamma = 0.01
-
-    eps = 0.01 #iteration tolerance
     print('[shen] init SCA: k: %d m: %d gt: %s' % (K, M, GT))
-    
     
     #init trajectory q and power p foor all k and n
     #store 2 sets of q and p for previous and current iteration
@@ -332,9 +333,12 @@ class env():
     shen_r = shen_rpq(a, q, d, I, gt, gamma)
     print("[shen] R: %.2f" % (shen_r))
 
+    #visualize and print
+    self.plot_traj(q, gt)
     for k in range(K):
         for n in range(M):
-          print("[shen] q:[%.2f %.2f] a:%.2f" % (q[k][n][0], q[k][n][1], a[k][n]))
+          if n % 5 == 0:
+            print("[shen] q:[%.2f %.2f] a:%.2f" % (q[k][n][0], q[k][n][1], a[k][n]))
         print()
 
     itr = 0
@@ -364,13 +368,16 @@ class env():
       shen_r_new = shen_rpq(a, q, d, I, gt, gamma)
       print("[shen] R: %.2f" % (shen_r_new))
       
+      #visualize and print
       self.plot_traj(q, gt)
       for k in range(K):
         for n in range(M):
-          print("[shen] q:[%.2f %.2f] a:%.2f" % (q[k][n][0], q[k][n][1], a[k][n]))
+          if n % 5 == 0:
+            print("[shen] q:[%.2f %.2f] a:%.2f" % (q[k][n][0], q[k][n][1], a[k][n]))
+        print()
 
       #continue if prev r was 0
-      if shen_r == 0: 
+      if shen_r <= 0: 
         shen_r = shen_r_new
         continue
 
@@ -393,133 +400,7 @@ class env():
     return p, q
 
   def ma_sca(self, K, M, GT, F):
-
-    p = np.zeros((K, M))
-    q = np.zeros((K, M, 2))
-    a = np.zeros((K, M))
-    d = np.zeros((K, K, M))
-    I = np.zeros((K, M))
-
-    for n in range(M):
-      for k in range(K):
-        p[k][n] = 1
-      
-      #q[0][n][0] = -0.1 * n
-      #q[0][n][1] = -0.1 * n
-
-      #q[1][n][0] = 0.1 * n
-      #q[1][n][1] = -0.1 * n
-
-      #q[2][n][0] = -0.1 * n
-      #q[2][n][1] = 0.1 * n
-
-      #q[3][n][0] = 0.1 * n
-      #q[3][n][1] = 0.1 * n
-
-      q[0][n][0] = -0.1
-      q[0][n][1] = -0.1
-      q[1][n][0] = 0.1
-      q[1][n][1] = -0.1
-
-      q[2][n][0] = -0.1
-      q[2][n][1] = 0.1
-      q[3][n][0] = 0.1
-      q[3][n][1] = 0.1
-
-      '''
-      q[2][n][0] = 0.7
-      q[2][n][1] = 0.3
-      q[3][n][0] = 0.7
-      q[3][n][1] = 0.7
-      '''
-
-    gt = GT
-    gamma = 0.1
-
-    eps = 0.01 #iteration tolerance
-    print('[shen] init SCA: k: %d m: %d gt: %s' % (K, M, GT))
-    
-    
-    #init trajectory q and power p foor all k and n
-    #store 2 sets of q and p for previous and current iteration
-    #TODO
-
-    #determine initial R given p and q
-    for n in range(M):
-      for k in range(K):
-        a[k][n] = math.sqrt(p[k][n])
-
-        I[k][n] = 0
-        for j in range(K):
-          d[j][k][n] = dist(q[j][n], gt[k])**2 + 0.0001
-          I[k][n] += gamma * a[j][n]**2 / d[j][k][n]
-        I[k][n] -= gamma * a[k][n]**2 / d[k][k][n]
-    shen_r = shen_rpq(a, q, d, I, gt, gamma)
-    print("[shen] R: %.2f" % (shen_r))
-
-    for k in range(K):
-        for n in range(M):
-          print("[shen] q:[%.2f %.2f] a:%.2f" % (q[k][n][0], q[k][n][1], a[k][n]))
-        print()
-
-    itr = 0
-    while True:
-      var_a, var_q = optimize_ma(a, q, p, d, I, gt, gamma)
-      
-      #update a, q, p
-      for idx in range(K * M):
-        a[idx // M][idx % M] = var_a.level()[idx]
-        p[idx // M][idx % M] = a[idx // M][idx % M]**2
-
-        q[idx // M][idx % M][0] = var_q.level()[idx * 2]
-        q[idx // M][idx % M][1] = var_q.level()[idx * 2 + 1]
-      
-      #update a, d, I with p, q
-      for n in range(M):
-        for k in range(K):
-          a[k][n] = math.sqrt(p[k][n])
-          
-          I[k][n] = 0
-          for j in range(K):
-            d[j][k][n] = dist(q[j][n], gt[k])**2 + 0.0001
-            if F[j] == F[k]:
-              I[k][n] += gamma * a[j][n]**2 / d[j][k][n]
-          I[k][n] -= gamma * a[k][n]**2 / d[k][k][n]
-
-      #update R by eq 4 using shen_rpq
-      shen_r_new = shen_rpq(a, q, d, I, gt, gamma)
-      print("[shen] R: %.2f" % (shen_r_new))
-      
-      self.plot_traj(q, gt)
-
-      #'''
-      for k in range(K):
-        for n in range(M):
-          print("[shen] q:[%.2f %.2f] a:%.2f" % (q[k][n][0], q[k][n][1], a[k][n]))
-      #'''
-
-      #continue if prev r was 0
-      if shen_r == 0: 
-        shen_r = shen_r_new
-        continue
-
-      #termination condition
-      '''
-      if ((shen_r_new - shen_r) / (shen_r)) < eps:
-        print("term")
-        time.sleep(30)
-        break
-      '''
-
-      #update iteration
-      shen_r = shen_r_new
-
-      itr += 1
-      if itr % 5 == 0:
-        pass
-
-    p = np.multiply(a, a)
-    return p, q
+    pass
 
 def optimize_shen(a, q, p, d, I, gt, gamma):
   d_min = 0.05
@@ -534,10 +415,6 @@ def optimize_shen(a, q, p, d, I, gt, gamma):
   var_dist = m.variable('dist_expr', [K, K, M], mf.Domain.greaterThan(0.0))
   var_inner = m.variable('inner_div', [K, K, M])
   var_t = m.variable('t', [K, M, K])
-  #log_inner = m.variable('log_inner')
-  #m.constraint('min_sep', mf.Expr.hstack(mf.Expr()), mf.Domain.inQCone())
-  #m.constraint('level_speed', mf.Expr.hstack(mf.Expr()), mf.Domain.inQCone())
-  #m.constraint('min_sep', mf.Expr.hstack(mf.Expr()), mf.Domain.inQCone())
 
   #fixed starting loc
   for k in range(K):
@@ -546,18 +423,18 @@ def optimize_shen(a, q, p, d, I, gt, gamma):
   
   #define expression for 20c in Shen 2020
   inner_1 = np.empty((K, M), dtype=object)
-  inner_2 = np.empty((K, M), dtype=object)
-  inner_3 = np.empty((K, K, M), dtype=object)
-  #for each n, k, create R_k(a[n],q[n],a_r[n],q_r[n])
+  inner_2 = np.empty((K, K, M), dtype=object)
 
+  #for each n, k, create R_k(a[n],q[n],a_r[n],q_r[n]) and add the expressions together for objective
   obj_expr = mf.Expr.constTerm(0)
   for n in range(M):
     for k in range(K):
-      inner_1[k][n] = mf.Expr.zeros(1)
-      inner_2[k][n] = mf.Expr.zeros(1)
 
+      inner_1[k][n] = mf.Expr.zeros(1)
       t_1_idx = 0
       for j in range(K): 
+
+        #t[0] computations
         #var_dist >= sqrt(x_dist^2 + y_dist^2)
         m.constraint('dist_%d_%d_%d' % (j, k, n), mf.Expr.vstack([
             var_dist.index(j, k, n), 
@@ -567,19 +444,15 @@ def optimize_shen(a, q, p, d, I, gt, gamma):
         #inner_1[k][n] = mf.Expr.add(inner_1[k][n], mf.Expr.mul(-1.0 * gamma * p[j][n] / d[j][k][n]**2, var_dist.index(j, k, n)))
         inner_1[k][n] = mf.Expr.add(inner_1[k][n], mf.Expr.sub(mf.Expr.mul(2 * a[j][n] / d[j][k][n], var_a.index(j, n)), mf.Expr.mul(a[j][n]**2 / d[j][k][n]**2, var_dist.index(j, k, n))))
 
-        #
+        #t[1] computations
         if j != k:
-          #m.constraint(mf.Expr.vstack([mf.Expr.constTerm(0.5), var_power.index(j, k, n), var_a.index(j, n)]), mf.Domain.inRotatedQCone())
-          #inner_3 = 
-          inner_3[j][k][n] = mf.Expr.add(d[j][k][n], mf.Expr.dot(2 * (q[j][n] - gt[k]), mf.Expr.hstack([mf.Expr.sub(var_q.index(j, n, 0), q[j][n][0]), mf.Expr.sub(var_q.index(j, n, 1), q[j][n][1])])))
+          inner_2[j][k][n] = mf.Expr.add(d[j][k][n], mf.Expr.dot(2 * (q[j][n] - gt[k]), mf.Expr.hstack([mf.Expr.sub(var_q.index(j, n, 0), q[j][n][0]), mf.Expr.sub(var_q.index(j, n, 1), q[j][n][1])])))
+          m.constraint('inner_%d_%d_%d' % (j, k, n), mf.Expr.vstack([mf.Expr.mul(0.5, var_inner.index(j, k, n)), inner_2[j][k][n], var_a.index(j, n)]), mf.Domain.inRotatedQCone())
 
-          #inner_2[k][n] = summation of var_inner(j, k, n)
-          #inner_2[k][n] = mf.Expr.add(inner_2[k][n], var_inner.index(j, k, n))
-          m.constraint('inner_%d_%d_%d' % (j, k, n), mf.Expr.vstack([mf.Expr.mul(0.5, var_inner.index(j, k, n)), inner_3[j][k][n], var_a.index(j, n)]), mf.Domain.inRotatedQCone())
-
-          #t[1] >= gamma / (1 + I[k][n]) * inner_2[k][n]
+          #t[1+j] >= gamma / (1 + I[k][n]) * inner_2[k][n]
           m.constraint('t1_%d_%d_%d' % (j, k, n), mf.Expr.sub(var_t.index(k, n, 1 + t_1_idx), mf.Expr.mul(gamma / (1 + I[k][n]), var_inner.index(j, k, n))), mf.Domain.greaterThan(0.0))
           t_1_idx += 1
+
         '''
         #t[2] >= -log(1 + I[k][n])
         m.constraint('t2_%d_%d_%d' % (j, k, n), mf.Expr.hstack(mf.Expr.constTerm(1 + I[k][n]), 1, var_t.index(k, n, 2)), mf.Domain.inPExpCone())
@@ -587,10 +460,9 @@ def optimize_shen(a, q, p, d, I, gt, gamma):
         #t[3] >= I[k][n] / (1 + I[k][n])
         m.constraint('t3_%d_%d_%d' % (j, k, n), mf.Expr.sub(var_t.index(k, n, 3), mf.Expr.constTerm(I[k][n] / (1 + I[k][n]))), mf.Domain.greaterThan(0.0))
         '''
-
         
         '''
-        #min sep
+        #min sep constraint
         if j > k:
           dist_jk = q[k][n] - q[j][n]
           dist_jk = np.abs(dist_jk)
@@ -602,29 +474,19 @@ def optimize_shen(a, q, p, d, I, gt, gamma):
               mf.Expr.constTerm(d_min)]), 
               mf.Domain.inRotatedQCone())
         '''
-      #t0 <= log(1+inner_1)
-      #m.constraint('t0_%d_%d' % (k, n), mf.Expr.hstack(
-      #    mf.Expr.add(1, mf.Expr.mul(gamma, mf.Expr.sub(mf.Expr.mul(2 * a[k][n] / d[k][k][n], var_a.index(k, n)), mf.Expr.mul(a[k][n]**2 / d[k][k][n]**2, var_dist.index(k, k, n))))), 
-      #    1, 
-      #    var_t.index(k, n, 0)), mf.Domain.inPExpCone())
+
+      #t[0] <= log(1 + gamma * inner_1)
       m.constraint('t0_%d_%d' % (k, n), mf.Expr.hstack(
           mf.Expr.add(1, mf.Expr.mul(gamma, inner_1[k][n])), 
           1, 
           var_t.index(k, n, 0)), mf.Domain.inPExpCone())
       
-      #flight speed
+      #flight speed constraint
       if n < M - 1:
         m.constraint('speed_%d_%d' % (k, n), mf.Expr.vstack([mf.Expr.constTerm(v_max), mf.Expr.sub(var_q.index(k, n + 1, 0), var_q.index(k, n, 0)), mf.Expr.sub(var_q.index(k, n + 1, 1), var_q.index(k, n, 1))]), mf.Domain.inQCone())
   
-      #t_sign = []
-
-      #for k in range(K):
-      #  for n in range(M):
-      #t_sign = t_sign + [1] + [-1 for x in range(K - 1)]
       obj_expr = mf.Expr.add(obj_expr, mf.Expr.dot(var_t.slice([k, n, 0], [k + 1, n + 1, K]), [1] + [-1 for x in range(K - 1)]))
 
-  #print(t_sign)
-  #obj_expr = mf.Expr.add(obj_expr, mf.Expr.dot(var_t.level(), t_sign))
   m.objective('obj_rate', mf.ObjectiveSense.Maximize, obj_expr)
 
   #m.setLogHandler(sys.stdout)
@@ -661,117 +523,6 @@ def shen_rpq(a, q, d, I, gt, gamma):
   for k in range(K):
     print("[rpq] %d: %.2f" % (k, r_total_k[k]))
   return sum(r_total)
-
-def optimize_ma(a, q, p, d, I, gt, gamma):
-  d_min = 0.05
-  v_max = 0.1
-  #dist_pad = 100
-
-  K, M = a.shape
-  #update a, q by solving complex problem 23
-  m = mf.Model('shen_sca')
-  var_a = m.variable('a', [K, M], mf.Domain.inRange(0.001, 5))
-  var_q = m.variable('q', [K, M, 2], mf.Domain.inRange(-1.0, 1.0))
-  var_dist = m.variable('dist_expr', [K, K, M])
-  var_inner = m.variable('inner_div', [K, K, M])
-  var_t = m.variable('t', [K, M, K])
-  #log_inner = m.variable('log_inner')
-  #m.constraint('min_sep', mf.Expr.hstack(mf.Expr()), mf.Domain.inQCone())
-  #m.constraint('level_speed', mf.Expr.hstack(mf.Expr()), mf.Domain.inQCone())
-  #m.constraint('min_sep', mf.Expr.hstack(mf.Expr()), mf.Domain.inQCone())
-
-  #fixed starting loc
-  for k in range(K):
-    m.constraint(mf.Expr.sub(var_q.index(k, 0, 0), q[k][0][0]), mf.Domain.equalsTo(0.0))
-    m.constraint(mf.Expr.sub(var_q.index(k, 0, 1), q[k][0][1]), mf.Domain.equalsTo(0.0))
-  
-  #define expression for 20c in Shen 2020
-  inner_1 = np.empty((K, M), dtype=object)
-  inner_2 = np.empty((K, M), dtype=object)
-  inner_3 = np.empty((K, K, M), dtype=object)
-  #for each n, k, create R_k(a[n],q[n],a_r[n],q_r[n])
-
-  obj_expr = mf.Expr.constTerm(0)
-  for n in range(M):
-    for k in range(K):
-      inner_1[k][n] = mf.Expr.zeros(1)
-      inner_2[k][n] = mf.Expr.zeros(1)
-
-      t_1_idx = 0
-      for j in range(K): 
-        #dist_expr = q.index(j, n, 0) - gt[k][0]
-        m.constraint('dist_%d_%d_%d' % (j, k, n), mf.Expr.vstack([mf.Expr.constTerm(0.5), var_dist.index(j, k, n), mf.Expr.sub(var_q.index(j, n, 0), gt[k][0]), mf.Expr.sub(var_q.index(j, n, 1), gt[k][1])]), mf.Domain.inRotatedQCone())
-        #var_dist = mf.Expr.add(
-        #    mf.Expr.sub(var_q.index(j, n, 0), gt[k][0]) * mf.Expr.sub(var_q.index(j, n, 0), gt[k][0]), 
-        #    mf.Expr.sub(var_q.index(j, n, 1), gt[k][1]) * mf.Expr.sub(var_q.index(j, n, 1), gt[k][1]))
-
-        inner_1[k][n] = mf.Expr.add(inner_1[k][n], mf.Expr.sub(mf.Expr.mul(2 * a[j][n] / d[j][k][n], var_a.index(j, n)), mf.Expr.mul(p[j][n] / d[j][k][n]**2, var_dist.index(j, k, n))))
-        #constraint on inner_1... can bound some temp variable to be >= ||q[j][n] - gt[k]||^2
-        #m.constraint(mf.Expr.)
-
-        #t0 <= log(1+inner_1)
-        m.constraint('t0_%d_%d_%d' % (j, k, n), mf.Expr.hstack(mf.Expr.add(1, inner_1[k][n]), 1, var_t.index(k, n, 0)), mf.Domain.inPExpCone())
-
-        #
-        if j != k:
-          #m.constraint(mf.Expr.vstack([mf.Expr.constTerm(0.5), var_power.index(j, k, n), var_a.index(j, n)]), mf.Domain.inRotatedQCone())
-          #inner_3 = 
-          inner_3[j][k][n] = mf.Expr.add(d[j][k][n], mf.Expr.dot(2 * (q[j][n] - gt[k]), mf.Expr.hstack([mf.Expr.sub(var_q.index(j, n, 0), q[j][n][0]), mf.Expr.sub(var_q.index(j, n, 1), q[j][n][1])])))
-
-          #inner_2[k][n] = summation of var_inner(j, k, n)
-          #inner_2[k][n] = mf.Expr.add(inner_2[k][n], var_inner.index(j, k, n))
-          m.constraint('inner_%d_%d_%d' % (j, k, n), mf.Expr.vstack([mf.Expr.mul(0.5, var_inner.index(j, k, n)), inner_3[j][k][n], var_a.index(j, n)]), mf.Domain.inRotatedQCone())
-
-          #t[1] >= gamma / (1 + I[k][n]) * inner_2[k][n]
-          m.constraint('t1_%d_%d_%d' % (j, k, n), mf.Expr.sub(var_t.index(k, n, 1 + t_1_idx), mf.Expr.mul(gamma / (1 + I[k][n]), var_inner.index(j, k, n))), mf.Domain.greaterThan(0.0))
-          t_1_idx += 1
-        '''
-        #t[2] >= -log(1 + I[k][n])
-        m.constraint('t2_%d_%d_%d' % (j, k, n), mf.Expr.hstack(mf.Expr.constTerm(1 + I[k][n]), 1, var_t.index(k, n, 2)), mf.Domain.inPExpCone())
-        
-        #t[3] >= I[k][n] / (1 + I[k][n])
-        m.constraint('t3_%d_%d_%d' % (j, k, n), mf.Expr.sub(var_t.index(k, n, 3), mf.Expr.constTerm(I[k][n] / (1 + I[k][n]))), mf.Domain.greaterThan(0.0))
-        '''
-
-        '''
-        #min sep
-        if j > k:
-          dist_jk = q[k][n] - q[j][n]
-          dist_jk = np.abs(dist_jk)
-          #print(dist_jk)
-          m.constraint('min_sep_%d_%d_%d' % (j, k, n), mf.Expr.vstack([mf.Expr.constTerm((dist_jk).T), 
-              mf.Expr.vstack([mf.Expr.sub(var_q.index(k, n, 0), var_q.index(j, n, 0)), mf.Expr.sub(var_q.index(k, n, 1), var_q.index(j, n, 1))]), 
-              mf.Expr.constTerm(q[k][n][0] - q[j][n][0]), 
-              mf.Expr.constTerm(q[k][n][1] - q[j][n][1]), 
-              mf.Expr.constTerm(d_min)]), 
-              mf.Domain.inRotatedQCone())
-        '''
-
-      #flight speed
-      if n < M - 1:
-        m.constraint('speed_%d_%d' % (k, n), mf.Expr.vstack([mf.Expr.constTerm(v_max), mf.Expr.sub(var_q.index(k, n + 1, 0), var_q.index(k, n, 0)), mf.Expr.sub(var_q.index(k, n + 1, 1), var_q.index(k, n, 1))]), mf.Domain.inQCone())
-      #obj_expr = mf.Expr(math.log(1 + gamma * mf.Expr.sum(inner_1)) - gamma / (1 + I[k][n]) * mf_Expr.sum(inner_2) - math.log(1 + I[k][n]) + I[k][n] / (1 + I[k][n]))
-      #obj_expr = mf.Expr(math.log(1 + gamma * mf.Expr.sum(inner_1)))
-  
-      #t_sign = []
-
-      #for k in range(K):
-      #  for n in range(M):
-      #t_sign = t_sign + [1] + [-1 for x in range(K - 1)]
-      obj_expr = mf.Expr.add(obj_expr, mf.Expr.dot(var_t.slice([k, n, 0], [k + 1, n + 1, K]), [1] + [-1 for x in range(K - 1)]))
-
-  #print(t_sign)
-  #obj_expr = mf.Expr.add(obj_expr, mf.Expr.dot(var_t.level(), t_sign))
-  m.objective('obj_rate', mf.ObjectiveSense.Maximize, obj_expr)
-
-  m.setLogHandler(sys.stdout)
-  m.writeTask('shen_sca.opf')
-  m.solve()
-
-  #print(m.getProblemStatus())
-  print("[opt] %f" % (m.primalObjValue()))
-  #print(var_a.level(), var_q.level())
-  return var_a, var_q
 
 def dist(pos_0, pos_1):
   return np.linalg.norm(np.array(pos_0) - np.array(pos_1))
