@@ -6,12 +6,13 @@ import mosek.fusion as mf
 import sys
 import time
 
-
 import utils
 import vis
 
 class ma_sca():
-  def __init__(self, K, M, GT, F, Q=None, P=None, plotter=None):
+  def __init__(self, K, M, GT, F, graph_max_edge_dist=0.5, Q=None, P=None, plotter=None):
+
+    #init shen params
     self.d = np.zeros((K, K, M))
     self.I = np.zeros((K, M))
     self.gt = GT
@@ -37,7 +38,10 @@ class ma_sca():
     self.g_gt = nx.Graph()
     
     #freq init
+    self.f = F
+
     #update graph based on trajectory endpoints
+    self.max_color_dist = graph_max_edge_dist
     self.update_graph(self.q[:,M - 1,:])
 
     print('[shen] init SCA: k: %d m: %d gt: %s' % (K, M, GT))
@@ -70,8 +74,8 @@ class ma_sca():
         self.q[idx // M][idx % M][1] = var_q.level()[idx * 2 + 1]
       
       #update freq graph based on trajectory endpoints
-      #TODO do graph coloring
       self.update_graph(self.q[:,M - 1,:])
+      self.freq_assignments = self.color_graph(self.f)
 
       #update a, d, I with p, q, F
       #TODO update with F
@@ -87,15 +91,17 @@ class ma_sca():
 
       #update R by eq 4 using shen_rpq
       shen_r_new = utils.shen_rpq(self.a, self.q, self.d, self.I, self.gt, self.gamma)
-      print("[shen] R: %.2f" % (shen_r_new))
+      #print("[shen] R: %.2f" % (shen_r_new))
       
       #visualize and print
       self.plotter.plot_traj(self.q, self.gt)
+      '''
       for k in range(K):
         for n in range(M):
           if n % 5 == 0:
             print("[shen] q:[%.2f %.2f] a:%.2f" % (self.q[k][n][0], self.q[k][n][1], self.a[k][n]))
         print()
+      '''
 
       #continue if prev r was 0
       if self.shen_r <= 0: 
@@ -122,7 +128,8 @@ class ma_sca():
 
   #update graph given new set of target positions
   def update_graph(self, target_pos):
-    print("update_graph: \n", target_pos)
+    #print("update_graph: \n", target_pos)
+    t_start = time.time()
 
     self.g_gt.clear()
 
@@ -136,10 +143,125 @@ class ma_sca():
       
         if v1 == v2 or self.g_gt.has_edge(v1, v2):
           continue
-          
-        self.g_gt.add_edge(v1, v2, weight=utils.dist(pos1, pos2))
+        
+        #nodes are close enough that they should be assigned sep freqs if possible
+        if utils.dist(pos1, pos2) <= self.max_color_dist:
+          self.g_gt.add_edge(v1, v2, weight=utils.dist(pos1, pos2))
+    
+    t_end = time.time()
+    print("[upd graph] time:", t_end - t_start)
 
-    print(self.g_gt)
+  def color_graph(self, freqs):
+
+    t_start = time.time()
+
+    #make copy of graph
+    g = self.g_gt.copy()
+
+    max_vert_idx = len(g.nodes())
+
+    range_factor = 0.16
+
+    print("[color] freqs:", freqs)
+    print("[color] range factor:", range_factor)
+
+    freqs = list(sorted(freqs))
+
+    #print(freqs)
+
+    edge_ptr = 0
+    freq_assignments = [0 for i in range(g.number_of_nodes())]
+    #starting from lowest freq
+    for f in freqs:
+      #determine max dist threshold for current freq
+      dist_thresh = range_factor / f**2
+
+      #fetch updated graph state
+      edges = g.edges(data="weight")
+      edges = list(sorted(edges, reverse=True, key=lambda x: x[2]))
+      verts = g.nodes()
+
+      #print(edges)
+      #print(verts)
+
+      #remove edges with larger weight than threshold  
+      while edge_ptr < len(edges) and edges[edge_ptr][2] > dist_thresh:
+        g.remove_edge(edges[edge_ptr][0], edges[edge_ptr][1])
+        edge_ptr += 1
+
+      #find connected components in graph
+      visited = [0 for x in range(max_vert_idx)]
+      cc_id = []
+      curr_id = 0
+
+      #print(verts)
+
+      for v in verts:
+        #if not g.has_node(v):
+        #  continue
+
+        #if previously unvisited, recursively visit
+        num_visited = visit_node(g, v, visited, cc_id, curr_id)
+
+        if num_visited > 0:
+          curr_id += 1
+      
+      print(cc_id)
+      #for each cc, assign vert with lowest degree the current freq
+      for cc in cc_id:
+        g_sub = g.copy()
+
+        while len(cc) > 0:
+          lowest_degree = 1000
+          lowest_vertex = -1
+          for v in cc:
+            if g_sub.degree(v) < lowest_degree:
+              lowest_degree = g_sub.degree(v)
+              lowest_vertex = v
+
+          if lowest_vertex != -1:
+            freq_assignments[lowest_vertex] = f
+
+            #remove the vertex's neighbors from consideration for this freq
+            neighbors = list(g_sub.adj[lowest_vertex])
+            for neighbor in neighbors:
+              g_sub.remove_node(neighbor)
+              cc.remove(neighbor)
+
+            #remove the vertex and its edges from consideration completely
+            g_sub.remove_node(lowest_vertex)
+            g.remove_node(lowest_vertex)
+            cc.remove(lowest_vertex)
+
+            #print(g.nodes())
+
+      #print(freq_assignments)
+
+    print(freq_assignments)
+    t_end = time.time()
+    print("[color] time:", t_end - t_start)
+
+    self.plotter.plot_graph(self.g_gt, self.gt, freq_assignments)
+    return freq_assignments
+
+#apply curr_id to all nodes in connected component  
+def visit_node(g, i, visited, cc_id, curr_id):
+  num_visited = 0
+
+  if visited[i] != 1:
+    visited[i] = 1
+    if curr_id >= len(cc_id):
+      cc_id.append([i])
+    else:
+      cc_id[curr_id].append(i)
+
+    num_visited += 1
+
+    #print(i)
+    for v in g.adj[i]:
+     num_visited += visit_node(g, v, visited, cc_id, curr_id)
+
+  return num_visited
 
 def shen_sca(e, K, M, GT):
 
@@ -344,8 +466,8 @@ def optimize_shen(a, q, p, d, I, gt, gamma):
 
   m.objective('obj_rate', mf.ObjectiveSense.Maximize, obj_expr)
 
-  m.setLogHandler(sys.stdout)
-  m.writeTask('shen_sca.opf')
+  #m.setLogHandler(sys.stdout)
+  #m.writeTask('shen_sca.opf')
   m.solve()
 
   #print(m.getProblemStatus())

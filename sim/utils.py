@@ -25,8 +25,8 @@ def shen_rpq(a, q, d, I, gt, gamma):
       #r_total[n] += math.log(1 + r_temp[k]) - math.log(1 + I[k][n])
       #r_total_k[k] += math.log(1 + r_temp[k]) - math.log(1 + I[k][n])
 
-  for k in range(K):
-    print("[rpq] %d: %.2f" % (k, r_total_k[k]))
+  #for k in range(K):
+  #  print("[rpq] %d: %.2f" % (k, r_total_k[k]))
   return sum(r_total)
 
 def dist(pos_0, pos_1):

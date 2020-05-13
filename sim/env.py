@@ -59,7 +59,7 @@ class env():
       self.gt[i][0] = random.uniform(self.p_bounds[0][0], self.p_bounds[0][1])
       self.gt[i][1] = random.uniform(self.p_bounds[1][0], self.p_bounds[1][1])
 
-    self.F = [1 for x in range(self.n_drones)]
+    self.F = [0.4, 0.9, 2.4]
     
     #drone trajectory init
     self.init_q = np.zeros((self.n_drones, self.M, 2))
