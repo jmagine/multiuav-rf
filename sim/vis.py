@@ -18,16 +18,19 @@ class plotter():
       self.ax_vor.set_xlim([self.p_bounds[0][0] - VIEW_BORDER, self.p_bounds[0][1] + VIEW_BORDER])
       self.ax_vor.set_ylim([self.p_bounds[1][0] - VIEW_BORDER, self.p_bounds[1][1] + VIEW_BORDER])
 
+    self.fig_opt = plt.figure(figsize=(8,4), dpi=100)
+
+
     if self.plot_traj_bool:
-      self.fig_traj = plt.figure(figsize=(8, 8), dpi=100)
-      self.ax_traj = self.fig_traj.add_subplot(1,1,1)
+      #self.fig_traj = plt.figure(figsize=(4, 4), dpi=100)
+      self.ax_traj = self.fig_opt.add_subplot(1,2,1)
       self.ax_traj.axis('equal')
       self.ax_traj.set_xlim([self.p_bounds[0][0] - VIEW_BORDER, self.p_bounds[0][1] + VIEW_BORDER])
       self.ax_traj.set_ylim([self.p_bounds[1][0] - VIEW_BORDER, self.p_bounds[1][1] + VIEW_BORDER])
 
     if self.plot_graph_bool:
-      self.fig_graph = plt.figure(figsize=(8, 8), dpi=100)
-      self.ax_graph = self.fig_graph.add_subplot(1,1,1)
+      #self.fig_graph = plt.figure(figsize=(4, 4), dpi=100)
+      self.ax_graph = self.fig_opt.add_subplot(1,2,2)
       self.ax_graph.axis('equal')
       self.ax_traj.set_xlim([self.p_bounds[0][0] - VIEW_BORDER, self.p_bounds[0][1] + VIEW_BORDER])
       self.ax_traj.set_ylim([self.p_bounds[1][0] - VIEW_BORDER, self.p_bounds[1][1] + VIEW_BORDER])
@@ -59,9 +62,11 @@ class plotter():
     plt.pause(0.01)
 
   def plot_traj(self, q, gt):
-    self.fig_traj.clf()
-    ax = self.fig_traj.gca()
-    
+    #self.fig_traj.clf()
+    #ax = self.fig_traj.gca()
+    self.ax_traj.cla()
+    ax = self.ax_traj
+
     # Plot drone points
     for k in range(len(q)):
       #print(q[k, :, 0], q[k, :, 1])
@@ -85,29 +90,32 @@ class plotter():
 
   #plot gt positions, graph edges, freq assignments
   def plot_graph(self, g, gt, freqs):
-    self.fig_graph.clf()
-    ax = self.fig_graph.gca()
+    #self.fig_graph.clf()
+    #ax = self.fig_graph.gca()
+    self.ax_graph.cla()
+    ax = self.ax_graph
 
     ax.set_xlim([self.p_bounds[0][0] - VIEW_BORDER, self.p_bounds[0][1] + VIEW_BORDER])
     ax.set_ylim([self.p_bounds[1][0] - VIEW_BORDER, self.p_bounds[1][1] + VIEW_BORDER])
 
-    #plot gt positions
+    #plot gt and target positions
+    #unique_freqs = list(set(freqs))
+
     for k in range(len(gt)):
+      size = 64
       if freqs[k] == 0.0:
         color = 'red'
-        size = 64
-      elif freqs[k] == 0.4:
-        color = 'blue'
-        size = 64
-      elif freqs[k] == 0.9:
-        color = 'fuchsia'
-        size = 64
-      elif freqs[k] == 2.4:
+      elif freqs[k] > 2.4:
+        color = 'gold'
+      elif freqs[k] > 0.9:
         color = 'green'
-        size = 64
-      size = 128
-      ax.scatter(gt[k][0], gt[k][1], marker='.', s=size, c=color)
+      else:
+        color = 'blue'
+      #size = 128
+      ax.scatter(gt[k][0], gt[k][1], marker='x', s=5, c=color)
+      ax.scatter(g.nodes(data='p')[k][0], g.nodes(data='p')[k][1], marker='.', s=size, c=color)
 
+    #'''
     #plot graph edges
     for u, v in g.edges:
       u_pos = g.nodes(data='p')[u]
@@ -117,7 +125,7 @@ class plotter():
       y_pos = [u_pos[1], v_pos[1]]
       ax.plot(x_pos, y_pos, c='black', linewidth=0.25)
       #print(g.nodes(data='p')[u], g.nodes(data='p')[v])
-      
+    #'''
     
 
     #TODO plot freq assignments

@@ -43,6 +43,7 @@ class ma_sca():
     #update graph based on trajectory endpoints
     self.max_color_dist = graph_max_edge_dist
     self.update_graph(self.q[:,M - 1,:])
+    self.freq_assignments = self.color_graph(self.f)
 
     print('[shen] init SCA: k: %d m: %d gt: %s' % (K, M, GT))
 
@@ -155,93 +156,110 @@ class ma_sca():
 
     t_start = time.time()
 
-    #make copy of graph
-    g = self.g_gt.copy()
-
-    max_vert_idx = len(g.nodes())
-
-    range_factor = 0.16
-
+    freqs = list(sorted(freqs, reverse=True))
     print("[color] freqs:", freqs)
-    print("[color] range factor:", range_factor)
 
-    freqs = list(sorted(freqs))
+    range_factor = 10.0
+    freq_assignments = [0]
 
-    #print(freqs)
+    while 0 in freq_assignments:
+      #make copy of graph
+      g = self.g_gt.copy()
+      max_vert_idx = len(g.nodes())
 
-    edge_ptr = 0
-    freq_assignments = [0 for i in range(g.number_of_nodes())]
-    #starting from lowest freq
-    for f in freqs:
-      #determine max dist threshold for current freq
-      dist_thresh = range_factor / f**2
+      #graphs
+      g_freqs = []
 
-      #fetch updated graph state
-      edges = g.edges(data="weight")
-      edges = list(sorted(edges, reverse=True, key=lambda x: x[2]))
-      verts = g.nodes()
+      print("[color] range factor:", range_factor)
 
-      #print(edges)
-      #print(verts)
+      #edge_ptr = 0
+      freq_assignments = [0 for i in range(g.number_of_nodes())]
+      #starting from lowest freq
+      for f in freqs:
+        #determine max dist threshold for current freq
+        dist_thresh = range_factor / f**2
 
-      #remove edges with larger weight than threshold  
-      while edge_ptr < len(edges) and edges[edge_ptr][2] > dist_thresh:
-        g.remove_edge(edges[edge_ptr][0], edges[edge_ptr][1])
-        edge_ptr += 1
+        #fetch full graph state
+        edges = g.edges(data="weight")
+        edges = list(sorted(edges, key=lambda x: x[2]))
+        #edges = list(sorted(edges, reverse=True, key=lambda x: x[2]))
+        verts = g.nodes()
 
-      #find connected components in graph
-      visited = [0 for x in range(max_vert_idx)]
-      cc_id = []
-      curr_id = 0
+        #print(edges)
+        #print(verts)
 
-      #print(verts)
+        '''
+        #remove edges with larger weight than threshold
+        while edge_ptr < len(edges) and edges[edge_ptr][2] > dist_thresh:
+          g.remove_edge(edges[edge_ptr][0], edges[edge_ptr][1])
+          edge_ptr += 1
+        '''
 
-      for v in verts:
-        #if not g.has_node(v):
-        #  continue
+        #create a copy of graph for use on this freq
+        g_freq = g.copy()
 
-        #if previously unvisited, recursively visit
-        num_visited = visit_node(g, v, visited, cc_id, curr_id)
+        #remove edges for other freqs
+        for edge in edges:
+          if edge[2] > dist_thresh:
+            g_freq.remove_edge(edge[0], edge[1])
+        g_freqs.append(g_freq)
 
-        if num_visited > 0:
-          curr_id += 1
+        #find connected components in graph
+        visited = [0 for x in range(max_vert_idx)]
+        cc_id = []
+        curr_id = 0
+
+        #print(verts)
+
+        for v in verts:
+          #if not g.has_node(v):
+          #  continue
+
+          #if previously unvisited, recursively visit
+          num_visited = visit_node(g_freq, v, visited, cc_id, curr_id)
+
+          if num_visited > 0:
+            curr_id += 1
+        
+        print(cc_id)
+        #for each cc, assign vert with lowest degree the current freq
+        for cc in cc_id:
+          g_sub = g_freq.copy()
+
+          while len(cc) > 0:
+            lowest_degree = 1000
+            lowest_vertex = -1
+            for v in cc:
+              if g_sub.degree(v) < lowest_degree:
+                lowest_degree = g_sub.degree(v)
+                lowest_vertex = v
+
+            if lowest_vertex != -1:
+              freq_assignments[lowest_vertex] = f
+
+              #remove the vertex's neighbors from consideration for this freq
+              neighbors = list(g_sub.adj[lowest_vertex])
+              for neighbor in neighbors:
+                g_sub.remove_node(neighbor)
+                cc.remove(neighbor)
+
+              #remove the vertex and its edges from consideration completely
+              g_sub.remove_node(lowest_vertex)
+              g.remove_node(lowest_vertex)
+              cc.remove(lowest_vertex)
+
+              #print(g.nodes())
+
+        #print(freq_assignments)
       
-      print(cc_id)
-      #for each cc, assign vert with lowest degree the current freq
-      for cc in cc_id:
-        g_sub = g.copy()
-
-        while len(cc) > 0:
-          lowest_degree = 1000
-          lowest_vertex = -1
-          for v in cc:
-            if g_sub.degree(v) < lowest_degree:
-              lowest_degree = g_sub.degree(v)
-              lowest_vertex = v
-
-          if lowest_vertex != -1:
-            freq_assignments[lowest_vertex] = f
-
-            #remove the vertex's neighbors from consideration for this freq
-            neighbors = list(g_sub.adj[lowest_vertex])
-            for neighbor in neighbors:
-              g_sub.remove_node(neighbor)
-              cc.remove(neighbor)
-
-            #remove the vertex and its edges from consideration completely
-            g_sub.remove_node(lowest_vertex)
-            g.remove_node(lowest_vertex)
-            cc.remove(lowest_vertex)
-
-            #print(g.nodes())
-
-      #print(freq_assignments)
+      #change range factor
+      range_factor *= 0.95
 
     print(freq_assignments)
     t_end = time.time()
     print("[color] time:", t_end - t_start)
 
-    self.plotter.plot_graph(self.g_gt, self.gt, freq_assignments)
+    self.plotter.plot_graph(g_freqs[0], self.gt, freq_assignments)
     return freq_assignments
 
 #apply curr_id to all nodes in connected component  
@@ -377,7 +395,7 @@ def shen_sca(e, K, M, GT):
 
 def optimize_shen(a, q, p, d, I, gt, gamma):
   d_min = 0.0
-  v_max = 0.1
+  v_max = 0.2
   #dist_pad = 100
 
   K, M = a.shape

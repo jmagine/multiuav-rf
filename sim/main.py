@@ -16,11 +16,14 @@ import vis
 import opt
 
 #sim params
-N_DRONES = 8
+N_DRONES = 16
 
 #variables for tuning
 GRAPH_MAX_EDGE_DIST = 1.0
 M = 20
+
+F = [2.412, 2.437, 2.462, 2.484, 0.915, 0.433]
+#F = [0.4, 0.9, 2.4]
 
 P_BOUNDS = [[-1, 1], [-1, 1]]
 
@@ -29,7 +32,7 @@ PLOT_TRAJ = True
 PLOT_GRAPH = True
 
 if __name__ == "__main__":
-  e = env.env(n_drones=N_DRONES, p_bounds=P_BOUNDS, M=M)
+  e = env.env(n_drones=N_DRONES, p_bounds=P_BOUNDS, M=M, F=F)
   plotter = vis.plotter(pos_bounds=P_BOUNDS, plot_vor=PLOT_VOR, plot_traj=PLOT_TRAJ, plot_graph=PLOT_GRAPH)
   e.setup()
   o = opt.ma_sca(N_DRONES, M, e.gt, e.F, graph_max_edge_dist=GRAPH_MAX_EDGE_DIST, Q=e.init_q, P=e.init_p, plotter=plotter)
