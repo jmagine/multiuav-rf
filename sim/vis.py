@@ -12,7 +12,7 @@ class plotter():
     self.plot_graph_bool = plot_graph
 
     if self.plot_vor_bool:
-      self.fig_vor = plt.figure(figsize=(8, 8), dpi=100)
+      self.fig_vor = plt.figure(figsize=(16, 16), dpi=100)
       self.ax_vor = self.fig_vor.add_subplot(1,1,1)
       self.ax_vor.axis('equal')
       self.ax_vor.set_xlim([self.p_bounds[0][0] - VIEW_BORDER, self.p_bounds[0][1] + VIEW_BORDER])
@@ -20,20 +20,44 @@ class plotter():
 
     self.fig_opt = plt.figure(figsize=(8,4), dpi=100)
 
-
-    if self.plot_traj_bool:
-      #self.fig_traj = plt.figure(figsize=(4, 4), dpi=100)
-      self.ax_traj = self.fig_opt.add_subplot(1,2,1)
-      self.ax_traj.axis('equal')
-      self.ax_traj.set_xlim([self.p_bounds[0][0] - VIEW_BORDER, self.p_bounds[0][1] + VIEW_BORDER])
-      self.ax_traj.set_ylim([self.p_bounds[1][0] - VIEW_BORDER, self.p_bounds[1][1] + VIEW_BORDER])
-
+    #freq selection
     if self.plot_graph_bool:
       #self.fig_graph = plt.figure(figsize=(4, 4), dpi=100)
-      self.ax_graph = self.fig_opt.add_subplot(1,2,2)
-      self.ax_graph.axis('equal')
+      self.ax_graph = self.fig_opt.add_subplot(1,2,1)
+      self.ax_graph.set_xlim([self.p_bounds[0][0] - VIEW_BORDER, self.p_bounds[0][1] + VIEW_BORDER])
+      self.ax_graph.set_ylim([self.p_bounds[1][0] - VIEW_BORDER, self.p_bounds[1][1] + VIEW_BORDER])
+      self.ax_graph.tick_params(
+        axis='both',
+        which='both',
+        top=False,
+        bottom=False,
+        left=False,
+        right=False,
+        labeltop=False,
+        labelbottom=False,
+        labelleft=False,
+        labelright=False
+      )
+
+    #trajectories
+    if self.plot_traj_bool:
+      #self.fig_traj = plt.figure(figsize=(4, 4), dpi=100)
+      self.ax_traj = self.fig_opt.add_subplot(1,2,2)
       self.ax_traj.set_xlim([self.p_bounds[0][0] - VIEW_BORDER, self.p_bounds[0][1] + VIEW_BORDER])
       self.ax_traj.set_ylim([self.p_bounds[1][0] - VIEW_BORDER, self.p_bounds[1][1] + VIEW_BORDER])
+      self.ax_traj.tick_params(
+        axis='both',
+        which='both',
+        top=False,
+        bottom=False,
+        left=False,
+        right=False,
+        labeltop=False,
+        labelbottom=False,
+        labelleft=False,
+        labelright=False
+      )
+      
 
 
   def plot_vor(self, drones, centroids, vor):
@@ -70,15 +94,20 @@ class plotter():
     # Plot drone points
     for k in range(len(q)):
       #print(q[k, :, 0], q[k, :, 1])
-      ax.plot(q[k, :, 0], q[k, :, 1], marker='x', ms=3, color='C%d' % (k % 8))
-      ax.scatter(gt[k][0], gt[k][1], marker='.',s=64, color='C%d' % (k % 8))
+
+      ax.plot(q[k, :, 0], q[k, :, 1], marker='.', ms=2, color='blue', linewidth=0.25)
+      ax.scatter(gt[k][0], gt[k][1], marker='.',s=64, color='blue')
+
+      #ax.plot(q[k, :, 0], q[k, :, 1], marker='.', ms=2, color='C%d' % (k % 8), linewidth=0.25)
+      #ax.scatter(gt[k][0], gt[k][1], marker='.',s=64, color='C%d' % (k % 8))
 
     ax.set_xlim([self.p_bounds[0][0] - VIEW_BORDER, self.p_bounds[0][1] + VIEW_BORDER])
     ax.set_ylim([self.p_bounds[1][0] - VIEW_BORDER, self.p_bounds[1][1] + VIEW_BORDER])
-
     #for k in range(len(gt)):
     #  ax.scatter(gt[k])
-    ax.set_aspect('equal', 'box')
+    #ax.set_aspect('equal', 'box')
+    ax.set_xticklabels([])
+    ax.set_yticklabels([])
     #self.ax_traj.set_xlim([self.p_bounds[0][0] - VIEW_BORDER, self.p_bounds[0][1] + VIEW_BORDER])
     #self.ax_traj.set_ylim([self.p_bounds[1][0] - VIEW_BORDER, self.p_bounds[1][1] + VIEW_BORDER])
 
@@ -97,7 +126,8 @@ class plotter():
 
     ax.set_xlim([self.p_bounds[0][0] - VIEW_BORDER, self.p_bounds[0][1] + VIEW_BORDER])
     ax.set_ylim([self.p_bounds[1][0] - VIEW_BORDER, self.p_bounds[1][1] + VIEW_BORDER])
-
+    ax.set_xticklabels([])
+    ax.set_yticklabels([])
     #plot gt and target positions
     #unique_freqs = list(set(freqs))
 

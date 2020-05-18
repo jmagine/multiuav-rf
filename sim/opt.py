@@ -10,13 +10,13 @@ import utils
 import vis
 
 class ma_sca():
-  def __init__(self, K, M, GT, F, graph_max_edge_dist=0.5, Q=None, P=None, plotter=None):
+  def __init__(self, K, M, GT, F, v_max=0.2, h_min=0.2, graph_max_edge_dist=0.5, Q=None, P=None, plotter=None):
 
     #init shen params
     self.d = np.zeros((K, K, M))
     self.I = np.zeros((K, M))
     self.gt = GT
-    self.gamma = 0.01
+    self.gamma = 10**4
     self.eps = 0.01 #itr tolerance
 
     if Q is not None:
@@ -32,99 +32,230 @@ class ma_sca():
     if plotter is not None:
       self.plotter = plotter
 
+    '''
+    for k in range(K):
+      print("\\addplot[color=blue,mark=o] coordinates{", end='')
+      for n in range(M):
+        print("(%.2f,%.2f)" % (self.q[k][n][0], self.q[k][n][1]), end='')
+      print("};")
+    print()
+    '''
+
+    '''
+    for k in range(K):
+      print("\\addplot[color=red,mark=o] coordinates{", end='')
+      for n in range(M):
+        print("(%d,%.2f)" % (n, 10 * math.log(self.p[k][n], 10)), end='')
+      print("};")
+    print()
+    '''
+
     self.a = np.sqrt(self.p)
 
     #init graph for coloring based on UAV trajectory ending locations
     self.g_gt = nx.Graph()
     
     #freq init
-    self.f = F
+    self.F = F
+
+    self.v_max = v_max
+    self.h_min = h_min
+
+    #visualize initial trajectory
+    self.plotter.plot_traj(self.q, self.gt)
 
     #update graph based on trajectory endpoints
     self.max_color_dist = graph_max_edge_dist
     self.update_graph(self.q[:,M - 1,:])
-    self.freq_assignments = self.color_graph(self.f)
+    self.f = self.color_graph(self.F)
 
-    print('[shen] init SCA: k: %d m: %d gt: %s' % (K, M, GT))
+    #self.f = self.naive_freq(2.484)
 
-    #determine initial R given p and q
-    for n in range(M):
-      for k in range(K):
-        self.a[k][n] = math.sqrt(self.p[k][n])
+    print('[sca] init complete: K: %d M: %d eps: %f F: %s' % (K, M, self.eps, self.F))
 
-        self.I[k][n] = 0
-        for j in range(K):
-          self.d[j][k][n] = utils.dist(self.q[j][n], self.gt[k])**2 + 0.1
-          self.I[k][n] += self.gamma * self.a[j][n]**2 / self.d[j][k][n]
-        self.I[k][n] -= self.gamma * self.a[k][n]**2 / self.d[k][k][n]
-    self.shen_r = utils.shen_rpq(self.a, self.q, self.d, self.I, self.gt, self.gamma)
-    print("[shen] R: %.2f" % (self.shen_r))
+    #determine initial d, I, R given p, q, f
+    for f in self.f:
+      uav_idxs = self.f[f]
 
-  def sca(self):
-    K, M = self.a.shape
-    itr = 0
-    while True:
-      var_a, var_q = optimize_shen(self.a, self.q, self.p, self.d, self.I, self.gt, self.gamma)
-      
-      #update a, q, p
-      for idx in range(K * M):
-        self.a[idx // M][idx % M] = var_a.level()[idx]
-        self.p[idx // M][idx % M] = self.a[idx // M][idx % M]**2
-
-        self.q[idx // M][idx % M][0] = var_q.level()[idx * 2]
-        self.q[idx // M][idx % M][1] = var_q.level()[idx * 2 + 1]
-      
-      #update freq graph based on trajectory endpoints
-      self.update_graph(self.q[:,M - 1,:])
-      self.freq_assignments = self.color_graph(self.f)
-
-      #update a, d, I with p, q, F
-      #TODO update with F
       for n in range(M):
-        for k in range(K):
+        for k in uav_idxs:
           self.a[k][n] = math.sqrt(self.p[k][n])
-          
+
           self.I[k][n] = 0
-          for j in range(K):
-            self.d[j][k][n] = utils.dist(self.q[j][n], self.gt[k])**2 + 0.1
+          for j in uav_idxs:
+            self.d[j][k][n] = utils.dist2(self.q[j][n], self.gt[k], self.h_min)**2
             self.I[k][n] += self.gamma * self.a[j][n]**2 / self.d[j][k][n]
           self.I[k][n] -= self.gamma * self.a[k][n]**2 / self.d[k][k][n]
 
-      #update R by eq 4 using shen_rpq
-      shen_r_new = utils.shen_rpq(self.a, self.q, self.d, self.I, self.gt, self.gamma)
-      #print("[shen] R: %.2f" % (shen_r_new))
-      
-      #visualize and print
-      self.plotter.plot_traj(self.q, self.gt)
-      '''
+    self.rate= utils.calc_rates(self.a, self.q, self.f, self.d, self.I, self.gt, self.gamma)
+    self.rate = np.sum(self.rate) * 1.44
+    print("[sca] init R: %f" % (self.rate))
+
+  def sca(self):
+    K, M = self.a.shape
+    eps = 0.00001
+
+    while True:
+      #split sca into smaller shen optimizations
+      for f in self.f:
+
+        #print(f, self.f)
+
+        print("[sca] F: %.3f" % (f))
+        uav_idxs = self.f[f]
+
+        if len(uav_idxs) == 0:
+          continue
+
+        itr = 0
+        while True:
+          #num_uavs = len(uav_idxs)
+          #idx_convert = []
+
+          a_f, q_f, p_f, d_f, I_f, gt_f = slice_freq(uav_idxs, self.a, self.q, self.p, self.d, self.I, self.gt)
+          var_a, var_q, obj_val = optimize_shen(a_f, q_f, p_f, d_f, I_f, gt_f, self.gamma, self.v_max, self.h_min)
+          
+          for idx in range(len(uav_idxs)):
+            for n in range(M):
+              obj_val = obj_val - math.log(1 + I_f[idx][n], 2) + I_f[idx][n] / (1 + I_f[idx][n])
+          #unpack a, q from optimizer
+          a_temp = np.zeros((len(uav_idxs), M))
+          p_temp = np.zeros((len(uav_idxs), M))
+          q_temp = np.zeros((len(uav_idxs), M, 2))
+
+          for idx in range(len(uav_idxs) * M):
+            a_temp[idx // M][idx % M] = var_a.level()[idx]
+            p_temp[idx // M][idx % M] = a_temp[idx // M][idx % M]**2
+
+            q_temp[idx // M][idx % M][0] = var_q.level()[idx * 2]
+            q_temp[idx // M][idx % M][1] = var_q.level()[idx * 2 + 1]
+
+          self.a[uav_idxs] = a_temp
+          self.p[uav_idxs] = p_temp
+          self.q[uav_idxs] = q_temp
+
+          #print(var_a.level())
+          #print(a_temp.shape)
+          #print(a_temp)
+          
+          '''
+          for uav in uav_idxs:
+            print("[sca] uav: %d p: %.4f q: %.2f %.2f" % (uav, self.p[uav][M-1], self.q[uav][M-1][0], self.q[uav][M-1][1]))
+          '''
+          '''
+          var_a, var_q = optimize_shen(self.a, self.q, self.p, self.d, self.I, self.gt, self.gamma)
+          #update a, q, p
+          for idx in range(K * M):
+            self.a[idx // M][idx % M] = var_a.level()[idx]
+            self.p[idx // M][idx % M] = self.a[idx // M][idx % M]**2
+
+            self.q[idx // M][idx % M][0] = var_q.level()[idx * 2]
+            self.q[idx // M][idx % M][1] = var_q.level()[idx * 2 + 1]
+          '''
+
+        
+
+          #self.f = self.naive_freq(2.484)
+
+          #update d, I
+          for n in range(M):
+            for k in uav_idxs:
+              self.a[k][n] = math.sqrt(self.p[k][n])
+
+              self.I[k][n] = 0
+              for j in uav_idxs:
+                self.d[j][k][n] = utils.dist2(self.q[j][n], self.gt[k], self.h_min)**2
+                self.I[k][n] += self.gamma * self.a[j][n]**2 / self.d[j][k][n]
+              self.I[k][n] -= self.gamma * self.a[k][n]**2 / self.d[k][k][n]
+
+          #update R by eq 4 using shen_rpq
+          rate_new = utils.calc_rates(self.a, self.q, self.f, self.d, self.I, self.gt, self.gamma)
+          rate_new = np.sum(rate_new) * 1.44
+          #print("[sca] R: %.2f opt: %.2f"  % (rate_new, obj_val))
+          
+          #visualize and print
+          self.plotter.plot_traj(self.q, self.gt)
+          '''
+          for k in range(K):
+            for n in range(M):
+              if n % 5 == 0:
+                print("[shen] q:[%.2f %.2f] a:%.2f" % (self.q[k][n][0], self.q[k][n][1], self.a[k][n]))
+            print()
+          '''
+
+          '''
+          #continue if prev r was 0
+          if self.rate <= 0: 
+            self.rate = rate_new
+            continue
+          '''
+
+          #termination condition
+          if (rate_new - self.rate) / (self.rate) < eps:
+            #self.rate = rate_new
+            #print("[sca] R: %f opt: %f" % (self.rate, obj_val))
+            break
+
+          #update iteration
+          self.rate = rate_new
+
+          itr += 1
+          if itr % 5 == 0:
+            pass
+
       for k in range(K):
-        for n in range(M):
-          if n % 5 == 0:
-            print("[shen] q:[%.2f %.2f] a:%.2f" % (self.q[k][n][0], self.q[k][n][1], self.a[k][n]))
-        print()
-      '''
+        print("[sca] uav: %d p: %.4f q: [%.2f %.2f]" % (k, self.p[k][M-1], self.q[k][M-1][0], self.q[k][M-1][1]))
+      print("[sca] R: %f --------------------" % (rate_new))
+      #print()
 
-      #continue if prev r was 0
-      if self.shen_r <= 0: 
-        self.shen_r = shen_r_new
-        continue
-
-      #termination condition
-      '''
-      if ((shen_r_new - shen_r) / (shen_r)) < eps:
-        print("term")
-        time.sleep(30)
+      #update freq graph based on trajectory endpoints
+      self.update_graph(self.q[:,M - 1,:])
+      f_new = self.color_graph(self.F)
+      if self.f == f_new:
+        print("[sca] finished")
+        print("[sca] R: %f" % (self.rate))
         break
-      '''
+      self.f = f_new
+      
+      #update d, I
+      for f in self.f:
+        uav_idxs = self.f[f]
 
-      #update iteration
-      self.shen_r = shen_r_new
+        for n in range(M):
+          for k in uav_idxs:
+            self.a[k][n] = math.sqrt(self.p[k][n])
 
-      itr += 1
-      if itr % 5 == 0:
-        pass
+            self.I[k][n] = 0
+            for j in uav_idxs:
+              self.d[j][k][n] = utils.dist2(self.q[j][n], self.gt[k], self.h_min)**2
+              self.I[k][n] += self.gamma * self.a[j][n]**2 / self.d[j][k][n]
+            self.I[k][n] -= self.gamma * self.a[k][n]**2 / self.d[k][k][n]
+
+    #print ending diagnostics
+    rate_final = utils.calc_rates(self.a, self.q, self.f, self.d, self.I, self.gt, self.gamma)
+    rate_final = np.sum(rate_final) * 1.44
+    print("[sca] R FINAL: %f --------------------" % (rate_final))
+    '''
+    print("[sca] p FINAL:")
+    for k in range(K):
+      print("\\addplot[color=blue,mark=o] coordinates{", end='')
+      for n in range(M):
+        print("(%d,%.2f)" % (n, 10 * math.log(self.p[k][n], 10)), end='')
+      print("};")
+    print()
+    '''
+    '''
+    for k in range(K):
+      print("\\addplot[color=blue,mark=o] coordinates{", end='')
+      for n in range(M):
+        print("(%.2f,%.2f)" % (self.q[k][n][0], self.q[k][n][1]), end='')
+      print("};")
+    print()
+    
+    '''
 
     self.p = np.multiply(self.a, self.a)
+    time.sleep(60)
     return self.p, self.q
 
   #update graph given new set of target positions
@@ -150,34 +281,35 @@ class ma_sca():
           self.g_gt.add_edge(v1, v2, weight=utils.dist(pos1, pos2))
     
     t_end = time.time()
-    print("[upd graph] time:", t_end - t_start)
+    #print("[upd graph] time:", t_end - t_start)
 
-  def color_graph(self, freqs):
+  def color_graph(self, F):
 
     t_start = time.time()
 
-    freqs = list(sorted(freqs, reverse=True))
-    print("[color] freqs:", freqs)
+    F = list(sorted(F, reverse=True))
+    #print("[color] freqs:", F)
 
-    range_factor = 10.0
-    freq_assignments = [0]
+    range_factor = 20000.0
 
-    while 0 in freq_assignments:
-      #make copy of graph
+    #freq assignments f
+    f = [0]
+
+    while 0 in f:
+      #reinit everything
       g = self.g_gt.copy()
       max_vert_idx = len(g.nodes())
 
-      #graphs
       g_freqs = []
 
-      print("[color] range factor:", range_factor)
+      #print("[color] range factor:", range_factor)
 
-      #edge_ptr = 0
-      freq_assignments = [0 for i in range(g.number_of_nodes())]
-      #starting from lowest freq
-      for f in freqs:
+      f = [0 for i in range(g.number_of_nodes())]
+
+      #starting from highest freq, max freq reuse
+      for curr_freq in F:
         #determine max dist threshold for current freq
-        dist_thresh = range_factor / f**2
+        dist_thresh = range_factor / curr_freq**2
 
         #fetch full graph state
         edges = g.edges(data="weight")
@@ -221,7 +353,7 @@ class ma_sca():
           if num_visited > 0:
             curr_id += 1
         
-        print(cc_id)
+        #print(cc_id)
         #for each cc, assign vert with lowest degree the current freq
         for cc in cc_id:
           g_sub = g_freq.copy()
@@ -235,7 +367,7 @@ class ma_sca():
                 lowest_vertex = v
 
             if lowest_vertex != -1:
-              freq_assignments[lowest_vertex] = f
+              f[lowest_vertex] = curr_freq
 
               #remove the vertex's neighbors from consideration for this freq
               neighbors = list(g_sub.adj[lowest_vertex])
@@ -250,17 +382,34 @@ class ma_sca():
 
               #print(g.nodes())
 
-        #print(freq_assignments)
       
       #change range factor
       range_factor *= 0.95
 
-    print(freq_assignments)
+    #print(f)
     t_end = time.time()
-    print("[color] time:", t_end - t_start)
+    
+    freq_assignment_dict = {}
+    for freq in F:
+      freq_assignment_dict[freq] = []
 
-    self.plotter.plot_graph(g_freqs[0], self.gt, freq_assignments)
+    for i, freq in enumerate(f):
+      freq_assignment_dict[freq].append(i)
+
+    #print("[color] time:", t_end - t_start)
+    print("[color] range_fac:", range_factor)
+    print("[color] assign:", freq_assignment_dict)
+
+    self.plotter.plot_graph(g_freqs[0], self.gt, f)
+    return freq_assignment_dict
+
+  #assign all vehicles to a single freq
+  def naive_freq(self, freq):
+    freq_assignments = {}
+    uav_idxs = list(range(len(self.g_gt.nodes())))
+    freq_assignments[freq] = uav_idxs
     return freq_assignments
+
 
 #apply curr_id to all nodes in connected component  
 def visit_node(g, i, visited, cc_id, curr_id):
@@ -280,6 +429,22 @@ def visit_node(g, i, visited, cc_id, curr_id):
      num_visited += visit_node(g, v, visited, cc_id, curr_id)
 
   return num_visited
+
+def slice_freq(idxs, a, q, p, d, I, gt):
+  
+  #print(idxs)
+  idxs = np.array(idxs)
+
+  a_f = a[idxs]
+  q_f = q[idxs]
+  p_f = p[idxs]
+  I_f = I[idxs]
+  gt_f = gt[idxs]
+
+  d_f = d[idxs[:, None], idxs]
+  #print(d_f.shape)
+
+  return a_f, q_f, p_f, d_f, I_f, gt_f
 
 def shen_sca(e, K, M, GT):
 
@@ -321,7 +486,7 @@ def shen_sca(e, K, M, GT):
 
       I[k][n] = 0
       for j in range(K):
-        d[j][k][n] = utils.dist(q[j][n], gt[k])**2 + 0.1
+        d[j][k][n] = utils.dist(q[j][n], gt[k])**2
         I[k][n] += gamma * a[j][n]**2 / d[j][k][n]
       I[k][n] -= gamma * a[k][n]**2 / d[k][k][n]
   shen_r = utils.shen_rpq(a, q, d, I, gt, gamma)
@@ -354,7 +519,7 @@ def shen_sca(e, K, M, GT):
         
         I[k][n] = 0
         for j in range(K):
-          d[j][k][n] = utils.dist(q[j][n], gt[k])**2 + 0.1
+          d[j][k][n] = utils.dist(q[j][n], gt[k])**2
           I[k][n] += gamma * a[j][n]**2 / d[j][k][n]
         I[k][n] -= gamma * a[k][n]**2 / d[k][k][n]
 
@@ -393,16 +558,16 @@ def shen_sca(e, K, M, GT):
   p = np.multiply(a, a)
   return p, q
 
-def optimize_shen(a, q, p, d, I, gt, gamma):
+def optimize_shen(a, q, p, d, I, gt, gamma, v_max=0.2, h_min=0.2):
   d_min = 0.0
-  v_max = 0.2
-  #dist_pad = 100
 
   K, M = a.shape
+
+  #print(K,M)
   #update a, q by solving complex problem 23
   m = mf.Model('shen_sca')
-  var_a = m.variable('a', [K, M], mf.Domain.inRange(0.01, 5))
-  var_q = m.variable('q', [K, M, 2], mf.Domain.inRange(-1.0, 1.0))
+  var_a = m.variable('a', [K, M], mf.Domain.inRange(0.01, 31.6))
+  var_q = m.variable('q', [K, M, 2], mf.Domain.inRange(-500, 500))
   var_dist = m.variable('dist_expr', [K, K, M], mf.Domain.greaterThan(0.0))
   var_inner = m.variable('inner_div', [K, K, M])
   var_t = m.variable('t', [K, M, K])
@@ -426,18 +591,24 @@ def optimize_shen(a, q, p, d, I, gt, gamma):
       for j in range(K): 
 
         #t[0] computations
-        #var_dist >= sqrt(x_dist^2 + y_dist^2)
+        #var_dist >= sqrt(x_dist^2 + y_dist^2 +z_dist^2)
         m.constraint('dist_%d_%d_%d' % (j, k, n), mf.Expr.vstack([
+            mf.Expr.constTerm(0.5), 
             var_dist.index(j, k, n), 
             mf.Expr.sub(var_q.index(j, n, 0), gt[k][0]), 
-            mf.Expr.sub(var_q.index(j, n, 1), gt[k][1])]), mf.Domain.inQCone())
+            mf.Expr.sub(var_q.index(j, n, 1), gt[k][1]),
+            mf.Expr.constTerm(h_min)]), mf.Domain.inRotatedQCone())
 
         #inner_1[k][n] = mf.Expr.add(inner_1[k][n], mf.Expr.mul(-1.0 * gamma * p[j][n] / d[j][k][n]**2, var_dist.index(j, k, n)))
-        inner_1[k][n] = mf.Expr.add(inner_1[k][n], mf.Expr.sub(mf.Expr.mul(2 * a[j][n] / d[j][k][n], var_a.index(j, n)), mf.Expr.mul(a[j][n]**2 / d[j][k][n]**2, var_dist.index(j, k, n))))
+        #inner_1[k][n] = mf.Expr.add(inner_1[k][n], mf.Expr.sub(mf.Expr.mul(2 * a[j][n] / d[j][k][n], var_a.index(j, n)), mf.Expr.mul(a[j][n]**2 / d[j][k][n]**2, var_dist.index(j, k, n))))
 
         #t[1] computations
         if j != k:
-          inner_2[j][k][n] = mf.Expr.add(d[j][k][n], mf.Expr.dot(2 * (q[j][n] - gt[k]), mf.Expr.hstack([mf.Expr.sub(var_q.index(j, n, 0), q[j][n][0]), mf.Expr.sub(var_q.index(j, n, 1), q[j][n][1])])))
+          dist_temp = np.zeros((3))
+          dist_temp[0] = q[j][n][0] - gt[k][0]
+          dist_temp[1] = q[j][n][1] - gt[k][1]
+          dist_temp[2] = h_min
+          inner_2[j][k][n] = mf.Expr.add(d[j][k][n], mf.Expr.dot(2 * (dist_temp), mf.Expr.hstack([mf.Expr.sub(var_q.index(j, n, 0), q[j][n][0]), mf.Expr.sub(var_q.index(j, n, 1), q[j][n][1]), mf.Expr.constTerm(0)])))
           m.constraint('inner_%d_%d_%d' % (j, k, n), mf.Expr.vstack([mf.Expr.mul(0.5, var_inner.index(j, k, n)), inner_2[j][k][n], var_a.index(j, n)]), mf.Domain.inRotatedQCone())
 
           #t[1+j] >= gamma / (1 + I[k][n]) * inner_2[k][n]
@@ -471,6 +642,7 @@ def optimize_shen(a, q, p, d, I, gt, gamma):
         '''
 
       #t[0] <= log(1 + gamma * inner_1)
+      inner_1[k][n] = mf.Expr.sub(mf.Expr.mul(2 * a[k][n] / d[k][k][n], var_a.index(k, n)), mf.Expr.mul(a[k][n]**2 / d[k][k][n]**2, var_dist.index(k, k, n)))
       m.constraint('t0_%d_%d' % (k, n), mf.Expr.hstack(
           mf.Expr.add(1, mf.Expr.mul(gamma, inner_1[k][n])), 
           1, 
@@ -480,16 +652,18 @@ def optimize_shen(a, q, p, d, I, gt, gamma):
       if n < M - 1:
         m.constraint('speed_%d_%d' % (k, n), mf.Expr.vstack([mf.Expr.constTerm(v_max), mf.Expr.sub(var_q.index(k, n + 1, 0), var_q.index(k, n, 0)), mf.Expr.sub(var_q.index(k, n + 1, 1), var_q.index(k, n, 1))]), mf.Domain.inQCone())
   
-      obj_expr = mf.Expr.add(obj_expr, mf.Expr.dot(var_t.slice([k, n, 0], [k + 1, n + 1, K]), [1] + [-1 for x in range(K - 1)]))
+      obj_expr = mf.Expr.add(obj_expr, mf.Expr.dot(var_t.slice([k, n, 0], [k + 1, n + 1, K]), [0.693147] + [-1 for x in range(K - 1)]))
 
   m.objective('obj_rate', mf.ObjectiveSense.Maximize, obj_expr)
+  m.setSolverParam("intpntCoTolRelGap", 1.0e-5)
+  #m.setSolverParam("intpntCoTolRelGap", 1.0e-8)
 
   #m.setLogHandler(sys.stdout)
   #m.writeTask('shen_sca.opf')
   m.solve()
 
   #print(m.getProblemStatus())
-  print("[opt] %f" % (m.primalObjValue()))
+  #print("[opt] %f" % (m.primalObjValue()))
   #print(var_a.level(), var_q.level())
-  return var_a, var_q
+  return var_a, var_q, m.primalObjValue()
 

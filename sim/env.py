@@ -26,11 +26,12 @@ import vis
 BANDWIDTH = 1.0
 
 class env():
-  def __init__(self, n_drones, p_bounds, M, F):
+  def __init__(self, n_drones, p_bounds, M, F, v_max):
     self.p_bounds = p_bounds
     self.n_drones = n_drones
     self.M = M
     self.F = F
+    self.v_max = v_max
     
     self.drn = []
     #self.poi = []
@@ -43,11 +44,13 @@ class env():
     #self.bs = [bs.base_station([0,0])] #set up for multiple base stations in future work
 
     #generate or load in situation, including drone positions, pois, freqs
+    '''
     for i in range(self.n_drones):
       x = random.uniform(self.p_bounds[0][0], self.p_bounds[0][1])
       y = random.uniform(self.p_bounds[1][0], self.p_bounds[1][1])
       self.drn.append(drone.drone(i, [x, y], 1))
       #self.g.add_node(len(self.bs) + i, p=self.drn[i].pos)
+    '''
 
     #for i in range(N_POI):
     #  self.poi.append(poi.poi([random.uniform(self.p_bounds[0][0], self.p_bounds[0][1]), random.uniform(self.p_bounds[1][0], self.p_bounds[1][1])], random.randint(0, 500), 500))
@@ -55,28 +58,82 @@ class env():
     #sort pois by start time
     #self.poi.sort(key=lambda x: x.t_start)
 
+    random.seed(1)
+
     self.gt = np.zeros((self.n_drones, 2))
+    '''
+    self.gt[0][0] = -200
+    self.gt[0][1] = -200
+
+    self.gt[1][0] = 100
+    self.gt[1][1] = -100
+
+    self.gt[2][0] = -100
+    self.gt[2][1] = 100
+
+    self.gt[3][0] = 100
+    self.gt[3][1] = 100
+    '''
+
+    #'''
     for i in range(self.n_drones):
-      self.gt[i][0] = random.uniform(self.p_bounds[0][0], self.p_bounds[0][1])
-      self.gt[i][1] = random.uniform(self.p_bounds[1][0], self.p_bounds[1][1])
-    
+      #self.gt[i][0] = random.uniform(self.p_bounds[0][0], self.p_bounds[0][1])
+      #self.gt[i][1] = random.uniform(self.p_bounds[1][0], self.p_bounds[1][1])
+      self.gt[i][0] = np.clip(random.gauss(0, 150), self.p_bounds[0][0], self.p_bounds[0][1])
+      self.gt[i][1] = np.clip(random.gauss(0, 150), self.p_bounds[1][0], self.p_bounds[1][1])
+
+    #for k in range(self.n_drones):
+    #  print("\\addplot[color=green,mark=square] coordinates{(%.2f,%.2f)};" % (self.gt[k][0], self.gt[k][1]))
+
+
+    #'''
     #drone trajectory init
     self.init_q = np.zeros((self.n_drones, self.M, 2))
     self.init_p = np.zeros((self.n_drones, self.M))
+    
+    '''
+    self.init_q[0][0][0] = 450
+    self.init_q[0][0][1] = 450
+    self.init_q[1][0][0] = -450
+    self.init_q[1][0][1] = 450
+    self.init_q[2][0][0] = 450
+    self.init_q[2][0][1] = -450
+    self.init_q[3][0][0] = -450
+    self.init_q[3][0][1] = -450
+    '''
+
     for i in range(self.n_drones):
       self.init_q[i][0][0] = random.uniform(self.p_bounds[0][0], self.p_bounds[0][1])
       self.init_q[i][0][1] = random.uniform(self.p_bounds[1][0], self.p_bounds[1][1])
 
-      x_step = (self.gt[i][0] - self.init_q[i][0][0]) / self.M
-      y_step = (self.gt[i][1] - self.init_q[i][0][1]) / self.M
+      dist = utils.dist(self.gt[i], self.init_q[i][0])
+
+      x_step = (self.gt[i][0] - self.init_q[i][0][0]) * self.v_max / dist
+      y_step = (self.gt[i][1] - self.init_q[i][0][1]) * self.v_max / dist
       for n in range(self.M):
-        self.init_q[i][n][0] = self.init_q[i][0][0] + x_step * n
-        self.init_q[i][n][1] = self.init_q[i][0][1] + y_step * n
+        if n < dist / self.v_max:
+          self.init_q[i][n][0] = self.init_q[i][0][0] + x_step * n
+          self.init_q[i][n][1] = self.init_q[i][0][1] + y_step * n
+        else:
+          self.init_q[i][n][0] = self.gt[i][0]
+          self.init_q[i][n][1] = self.gt[i][1]
 
     #drone power init
     for n in range(self.M):
       for k in range(self.n_drones):
-        self.init_p[k][n] = 1
+        self.init_p[k][n] = 100
+
+        '''
+        dist = utils.dist(self.init_q[k][n], self.gt[k])
+
+        if dist > 0:
+          self.init_p[k][n] = min(1, 1.0 / dist)
+        else:
+          self.init_p[k][n] = 1
+        '''
+
+    #print(self.init_p, self.init_q)
+    print(self.gt)
 
   def tick(self):
     t_start = time.time()
