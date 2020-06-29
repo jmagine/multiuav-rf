@@ -57,8 +57,6 @@ class plotter():
         labelleft=False,
         labelright=False
       )
-      
-
 
   def plot_vor(self, drones, centroids, vor):
     self.fig_vor.clf()
@@ -86,6 +84,9 @@ class plotter():
     plt.pause(0.01)
 
   def plot_traj(self, q, gt):
+
+    if not self.plot_traj_bool:
+      return
     #self.fig_traj.clf()
     #ax = self.fig_traj.gca()
     self.ax_traj.cla()
@@ -119,6 +120,8 @@ class plotter():
 
   #plot gt positions, graph edges, freq assignments
   def plot_graph(self, g, gt, freqs):
+    if not self.plot_graph_bool:
+      return
     #self.fig_graph.clf()
     #ax = self.fig_graph.gca()
     self.ax_graph.cla()
@@ -135,9 +138,9 @@ class plotter():
       size = 64
       if freqs[k] == 0.0:
         color = 'red'
-      elif freqs[k] > 2.4:
+      elif freqs[k] > 5.0:
         color = 'gold'
-      elif freqs[k] > 0.9:
+      elif freqs[k] > 2.4:
         color = 'green'
       else:
         color = 'blue'

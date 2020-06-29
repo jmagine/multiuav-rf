@@ -17,16 +17,18 @@ import lostik_utils
 #FREQS = [902e6 + 1e6 * i for i in range(27)]
 
 #PORT = '/dev/ttyUSB0'
-PORT = 'COM3'
+PORT = 'COM7'
 BAUD = 57600
 
-RADIO_PARAMS = ['mod lora', 'sf sf7', 'bw 500', 'pwr 20']
+FREQ = 925e6
+
+RADIO_PARAMS = ['mod lora', 'sf sf7', 'bw 500', 'pwr 20', 'freq %d' % (FREQ)] 
 #RADIO_PARAMS = ['mod fsk', 'bitrate 50000', 'pwr 2']
 
 t_start = time.time()
 
 try:
-  lsc = lostik_utils.LS_Controller(PORT, baudrate=BAUD, prt=True)
+  lsc = lostik_utils.LS_Controller(PORT, baudrate=BAUD, prt=False)
   lsc.write_serial("sys get ver", block=True)
   #lsc.write_serial("radio set mod fsk", block=True)
   #lsc.write_serial("radio set bitrate 300000", block=True)
@@ -60,9 +62,14 @@ try:
   t_last = time.time()
   tx_count_last = 0
   rx_count_last = 0
+
+  i = 0
+
   while True:
     lsc.tx(lsc.tx_count, block=True)
-    lsc.rx(block=True)
+    #time.sleep(1)
+    #lsc.write_serial("radio set wdt 1000", block=True)
+    #lsc.rx(block=True)
 
     t_curr = time.time()
     if t_curr > t_last + 5:
@@ -70,6 +77,11 @@ try:
       t_last = time.time()
       tx_count_last = lsc.tx_count 
       rx_count_last = lsc.rx_count
+
+      #lsc.write_serial("radio set freq %d" % ((i % 26)*1e6 + 902e6), block=True)
+      #i += 1
+      #print("[main] Freq: %d" % ((i % 27)*1e6 + 902e6))
+      print("[main] Freq: %d" % (FREQ))
 
 except KeyboardInterrupt:
   print("[main] Ctrl+C rx, stopping controller")

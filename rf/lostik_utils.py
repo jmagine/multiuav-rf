@@ -12,7 +12,7 @@ import sys
 import threading
 import time
 
-N_BYTES = 64
+N_BYTES = 255
 
 class LS_Controller(threading.Thread):
   def __init__(self, port, baudrate=57600, prt=True):
@@ -119,7 +119,7 @@ class LS_Controller(threading.Thread):
 
         del self.ser_rx[0]
 
-    print("[tx] profile: %.4f" % (time.time() - t_start))
+    #print("[tx] profile: %.4f" % (time.time() - t_start))
 
   #wait until message is received
   def rx(self, block=True):

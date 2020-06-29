@@ -3,6 +3,17 @@
 import numpy as np
 import math
 
+def calc_rates_fdma(a, q, f, d, I, gt, gamma):
+  K, M = I.shape
+
+  r = np.zeros((K, M))
+
+  for n in range(M):
+    for k in range(K):
+      pass
+
+  pass
+
 def calc_rates(a, q, f, d, I, gt, gamma):
   K, M = I.shape
 
@@ -21,9 +32,9 @@ def calc_rates(a, q, f, d, I, gt, gamma):
         inner_signal = 1
         inner_noise = 1
 
-        inner_signal += gamma * a[k][n]**2 / d[k][k][n]
+        #inner_signal += gamma * a[k][n]**2 / d[k][k][n]
         for j in uav_idxs:
-          #inner_signal += gamma * a[j][n]**2 / d[j][k][n]
+          inner_signal += gamma * a[j][n]**2 / d[j][k][n]
 
           if j != k:
             inner_noise += gamma * a[j][n]**2 / d[j][k][n]

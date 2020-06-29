@@ -1,3 +1,6 @@
+import datetime
+#import pytz
+
 import numpy as np 
 import random 
 import math
@@ -5,19 +8,25 @@ import networkx as nx
 import mosek.fusion as mf
 import sys
 import time
+import os
 
 import utils
 import vis
 
+#date = datetime.datetime.now()
+#time_str = date.strftime("[%m-%d][%H%M]")
+
 class ma_sca():
-  def __init__(self, K, M, GT, F, v_max=0.2, h_min=0.2, graph_max_edge_dist=0.5, Q=None, P=None, plotter=None):
+  def __init__(self, K, M, GT, B, F, v_max=0.2, h_min=0.2, graph_max_edge_dist=0.5, Q=None, P=None, plotter=None):
 
     #init shen params
     self.d = np.zeros((K, K, M))
     self.I = np.zeros((K, M))
     self.gt = GT
-    self.gamma = 10**4
+    self.gamma = 10**11 / B
     self.eps = 0.01 #itr tolerance
+    self.B = B
+    self.F = F
 
     if Q is not None:
       self.q = Q
@@ -50,16 +59,17 @@ class ma_sca():
     print()
     '''
 
-    self.a = np.sqrt(self.p)
+    self.a = abs(np.sqrt(self.p))
 
     #init graph for coloring based on UAV trajectory ending locations
     self.g_gt = nx.Graph()
-    
-    #freq init
-    self.F = F
 
     self.v_max = v_max
     self.h_min = h_min
+    
+    date = datetime.datetime.now()
+    self.time_str = date.strftime("[%m-%d][%H%M]")
+    self.params_str = "[%df_%dk_%dm_%dv]" % (len(self.F), K, M, int(self.v_max))
 
     #visualize initial trajectory
     self.plotter.plot_traj(self.q, self.gt)
@@ -79,7 +89,7 @@ class ma_sca():
 
       for n in range(M):
         for k in uav_idxs:
-          self.a[k][n] = math.sqrt(self.p[k][n])
+          self.a[k][n] = abs(math.sqrt(self.p[k][n]))
 
           self.I[k][n] = 0
           for j in uav_idxs:
@@ -87,15 +97,29 @@ class ma_sca():
             self.I[k][n] += self.gamma * self.a[j][n]**2 / self.d[j][k][n]
           self.I[k][n] -= self.gamma * self.a[k][n]**2 / self.d[k][k][n]
 
-    self.rate= utils.calc_rates(self.a, self.q, self.f, self.d, self.I, self.gt, self.gamma)
-    self.rate = np.sum(self.rate) * 1.44
+    self.rate = utils.calc_rates(self.a, self.q, self.f, self.d, self.I, self.gt, self.gamma)
+    self.rate = np.multiply(self.rate, self.B)
+
+
+    
+    if not os.path.exists("data/%s%s" % (self.time_str, self.params_str)):
+      os.makedirs("data/%s%s" % (self.time_str, self.params_str))
+
+    with open("data/%s%s/r_total_init.txt" % (self.time_str, self.params_str), 'w+') as file:
+      file.write("t r\n")
+      for n in range(M):
+        file.write("%d %.2f\n" % (n, np.sum(self.rate, axis=0)[n] / 10**6))
+
+    self.rate = np.sum(self.rate)
     print("[sca] init R: %f" % (self.rate))
+    
 
   def sca(self):
     K, M = self.a.shape
     eps = 0.00001
 
     while True:
+      t_start = time.time()
       #split sca into smaller shen optimizations
       for f in self.f:
 
@@ -109,6 +133,7 @@ class ma_sca():
 
         itr = 0
         while True:
+
           #num_uavs = len(uav_idxs)
           #idx_convert = []
 
@@ -134,33 +159,10 @@ class ma_sca():
           self.p[uav_idxs] = p_temp
           self.q[uav_idxs] = q_temp
 
-          #print(var_a.level())
-          #print(a_temp.shape)
-          #print(a_temp)
-          
-          '''
-          for uav in uav_idxs:
-            print("[sca] uav: %d p: %.4f q: %.2f %.2f" % (uav, self.p[uav][M-1], self.q[uav][M-1][0], self.q[uav][M-1][1]))
-          '''
-          '''
-          var_a, var_q = optimize_shen(self.a, self.q, self.p, self.d, self.I, self.gt, self.gamma)
-          #update a, q, p
-          for idx in range(K * M):
-            self.a[idx // M][idx % M] = var_a.level()[idx]
-            self.p[idx // M][idx % M] = self.a[idx // M][idx % M]**2
-
-            self.q[idx // M][idx % M][0] = var_q.level()[idx * 2]
-            self.q[idx // M][idx % M][1] = var_q.level()[idx * 2 + 1]
-          '''
-
-        
-
-          #self.f = self.naive_freq(2.484)
-
           #update d, I
           for n in range(M):
             for k in uav_idxs:
-              self.a[k][n] = math.sqrt(self.p[k][n])
+              self.a[k][n] = abs(math.sqrt(self.p[k][n]))
 
               self.I[k][n] = 0
               for j in uav_idxs:
@@ -170,42 +172,31 @@ class ma_sca():
 
           #update R by eq 4 using shen_rpq
           rate_new = utils.calc_rates(self.a, self.q, self.f, self.d, self.I, self.gt, self.gamma)
-          rate_new = np.sum(rate_new) * 1.44
+          rate_new = np.multiply(rate_new, self.B)
+          rate_total = np.sum(rate_new)
+
           #print("[sca] R: %.2f opt: %.2f"  % (rate_new, obj_val))
           
           #visualize and print
           self.plotter.plot_traj(self.q, self.gt)
-          '''
-          for k in range(K):
-            for n in range(M):
-              if n % 5 == 0:
-                print("[shen] q:[%.2f %.2f] a:%.2f" % (self.q[k][n][0], self.q[k][n][1], self.a[k][n]))
-            print()
-          '''
-
-          '''
-          #continue if prev r was 0
-          if self.rate <= 0: 
-            self.rate = rate_new
-            continue
-          '''
 
           #termination condition
-          if (rate_new - self.rate) / (self.rate) < eps:
+          if (rate_total - self.rate) / (self.rate) < eps:
             #self.rate = rate_new
             #print("[sca] R: %f opt: %f" % (self.rate, obj_val))
             break
 
           #update iteration
-          self.rate = rate_new
+          self.rate = rate_total
 
           itr += 1
           if itr % 5 == 0:
             pass
-
+      
+      print("[sca] time: %.2f" % (time.time() - t_start))
       for k in range(K):
         print("[sca] uav: %d p: %.4f q: [%.2f %.2f]" % (k, self.p[k][M-1], self.q[k][M-1][0], self.q[k][M-1][1]))
-      print("[sca] R: %f --------------------" % (rate_new))
+      print("[sca] R: %f --------------------" % (rate_total))
       #print()
 
       #update freq graph based on trajectory endpoints
@@ -223,7 +214,7 @@ class ma_sca():
 
         for n in range(M):
           for k in uav_idxs:
-            self.a[k][n] = math.sqrt(self.p[k][n])
+            self.a[k][n] = abs(math.sqrt(self.p[k][n]))
 
             self.I[k][n] = 0
             for j in uav_idxs:
@@ -233,29 +224,59 @@ class ma_sca():
 
     #print ending diagnostics
     rate_final = utils.calc_rates(self.a, self.q, self.f, self.d, self.I, self.gt, self.gamma)
-    rate_final = np.sum(rate_final) * 1.44
-    print("[sca] R FINAL: %f --------------------" % (rate_final))
-    '''
-    print("[sca] p FINAL:")
+    rate_final = np.multiply(rate_final, self.B)
+    rate_total_final = np.sum(rate_final)
+    print("[sca] R FINAL: %f --------------------" % (rate_total_final))    
+
+    if not os.path.exists("data/%s%s" % (self.time_str, self.params_str)):
+      os.makedirs("data/%s%s" % (self.time_str, self.params_str))
+
+    print("[sca] writing output to data/%s%s/" % (self.time_str, self.params_str))
+
+    print("[sca] writing GT FINAL:")
+    with open("data/%s%s/gt.txt" % (self.time_str, self.params_str), 'w+') as file:
+      file.write("x y\n")
+      for k in range(K):
+        file.write("%.2f %.2f\n" % (self.gt[k][0], self.gt[k][1]))
+
     for k in range(K):
-      print("\\addplot[color=blue,mark=o] coordinates{", end='')
-      for n in range(M):
-        print("(%d,%.2f)" % (n, 10 * math.log(self.p[k][n], 10)), end='')
-      print("};")
-    print()
-    '''
-    '''
-    for k in range(K):
-      print("\\addplot[color=blue,mark=o] coordinates{", end='')
-      for n in range(M):
-        print("(%.2f,%.2f)" % (self.q[k][n][0], self.q[k][n][1]), end='')
-      print("};")
-    print()
+      print("[sca] writing P final:")
+      with open("data/%s%s/uav%d_p.txt" % (self.time_str, self.params_str, k), 'w+') as file:
+        file.write("t p\n")
+        for n in range(M):
+          file.write("%d %.2f\n" % (n, 10 * math.log(self.p[k][n], 10)))
+
     
-    '''
+    for k in range(K):
+      print("[sca] writing Q FINAL:")
+      with open("data/%s%s/uav%d_q.txt" % (self.time_str, self.params_str, k), 'w+') as file:
+        file.write("x y\n")
+        freq = -1
+        for f in self.f:
+          if k in self.f[f]:
+            freq = f
+        
+        for n in range(M):
+          file.write("%.2f %.2f %f\n" % (self.q[k][n][0], self.q[k][n][1], freq))
+
+    with open("data/%s%s/r_total.txt" % (self.time_str, self.params_str), 'w+') as file:
+      file.write("t r\n")
+      for n in range(M):
+        file.write("%d %.2f\n" % (n, np.sum(rate_final, axis=0)[n] / 10**6))
+
+    for k in range(K):
+      print("[sca] writing R FINAL:")
+      with open("data/%s%s/uav%d_r.txt" % (self.time_str, self.params_str, k), 'w+') as file:
+        file.write("t r\n")
+
+        for n in range(M):
+          file.write("%d %.2f\n" % (n, rate_final[k][n] / 10**6))
+
+    #for f in self.f:
+    #  pass
 
     self.p = np.multiply(self.a, self.a)
-    time.sleep(60)
+    #time.sleep(60)
     return self.p, self.q
 
   #update graph given new set of target positions
@@ -600,7 +621,7 @@ def optimize_shen(a, q, p, d, I, gt, gamma, v_max=0.2, h_min=0.2):
             mf.Expr.constTerm(h_min)]), mf.Domain.inRotatedQCone())
 
         #inner_1[k][n] = mf.Expr.add(inner_1[k][n], mf.Expr.mul(-1.0 * gamma * p[j][n] / d[j][k][n]**2, var_dist.index(j, k, n)))
-        #inner_1[k][n] = mf.Expr.add(inner_1[k][n], mf.Expr.sub(mf.Expr.mul(2 * a[j][n] / d[j][k][n], var_a.index(j, n)), mf.Expr.mul(a[j][n]**2 / d[j][k][n]**2, var_dist.index(j, k, n))))
+        inner_1[k][n] = mf.Expr.add(inner_1[k][n], mf.Expr.sub(mf.Expr.mul(2 * a[j][n] / d[j][k][n], var_a.index(j, n)), mf.Expr.mul(a[j][n]**2 / d[j][k][n]**2, var_dist.index(j, k, n))))
 
         #t[1] computations
         if j != k:
@@ -642,7 +663,7 @@ def optimize_shen(a, q, p, d, I, gt, gamma, v_max=0.2, h_min=0.2):
         '''
 
       #t[0] <= log(1 + gamma * inner_1)
-      inner_1[k][n] = mf.Expr.sub(mf.Expr.mul(2 * a[k][n] / d[k][k][n], var_a.index(k, n)), mf.Expr.mul(a[k][n]**2 / d[k][k][n]**2, var_dist.index(k, k, n)))
+      #inner_1[k][n] = mf.Expr.sub(mf.Expr.mul(2 * a[k][n] / d[k][k][n], var_a.index(k, n)), mf.Expr.mul(a[k][n]**2 / d[k][k][n]**2, var_dist.index(k, k, n)))
       m.constraint('t0_%d_%d' % (k, n), mf.Expr.hstack(
           mf.Expr.add(1, mf.Expr.mul(gamma, inner_1[k][n])), 
           1, 
