@@ -58,7 +58,7 @@ class env():
     #sort pois by start time
     #self.poi.sort(key=lambda x: x.t_start)
 
-    random.seed(1)
+    #random.seed(1)
 
     self.gt = np.zeros((self.n_drones, 2))
     '''
@@ -75,13 +75,39 @@ class env():
     self.gt[3][1] = 100
     '''
 
-    #'''
+    '''
     for i in range(self.n_drones):
       #self.gt[i][0] = random.uniform(self.p_bounds[0][0], self.p_bounds[0][1])
       #self.gt[i][1] = random.uniform(self.p_bounds[1][0], self.p_bounds[1][1])
       self.gt[i][0] = np.clip(random.gauss(0, 150), self.p_bounds[0][0], self.p_bounds[0][1])
       self.gt[i][1] = np.clip(random.gauss(0, 150), self.p_bounds[1][0], self.p_bounds[1][1])
+    '''
 
+    #line
+    self.gt[0][0] = 400
+    self.gt[0][1] = -400
+
+    self.gt[1][0] = 400
+    self.gt[1][1] = -300
+
+    self.gt[2][0] = 400
+    self.gt[2][1] = -200
+
+    self.gt[3][0] = 400
+    self.gt[3][1] = 400
+
+    #square
+    self.gt[4][0] = -400
+    self.gt[4][1] = 400
+
+    self.gt[5][0] = -400
+    self.gt[5][1] = 300
+
+    self.gt[6][0] = -300
+    self.gt[6][1] = 300
+
+    self.gt[7][0] = -300
+    self.gt[7][1] = 400
     #for k in range(self.n_drones):
     #  print("\\addplot[color=green,mark=square] coordinates{(%.2f,%.2f)};" % (self.gt[k][0], self.gt[k][1]))
 
@@ -91,18 +117,67 @@ class env():
     self.init_q = np.zeros((self.n_drones, self.M, 2))
     self.init_p = np.zeros((self.n_drones, self.M))
     
+    self.init_q[0][0][0] = -200
+    self.init_q[0][0][1] = -300
+
+    self.init_q[1][0][0] = -200
+    self.init_q[1][0][1] = -275
+
+    self.init_q[2][0][0] = -200
+    self.init_q[2][0][1] = -250
+
+    self.init_q[3][0][0] = -200
+    self.init_q[3][0][1] = -225
+
+    self.init_q[4][0][0] = -400
+    self.init_q[4][0][1] = -200
+
+    self.init_q[5][0][0] = -375
+    self.init_q[5][0][1] = -200
+
+    self.init_q[6][0][0] = -325
+    self.init_q[6][0][1] = -200
+
+    self.init_q[7][0][0] = -350
+    self.init_q[7][0][1] = -200
+
     '''
-    self.init_q[0][0][0] = 450
-    self.init_q[0][0][1] = 450
-    self.init_q[1][0][0] = -450
-    self.init_q[1][0][1] = 450
-    self.init_q[2][0][0] = 450
-    self.init_q[2][0][1] = -450
-    self.init_q[3][0][0] = -450
-    self.init_q[3][0][1] = -450
+    self.init_q[0][0][0] = 400
+    self.init_q[0][0][1] = -400
+
+    self.init_q[1][0][0] = 300
+    self.init_q[1][0][1] = -400
+
+    self.init_q[2][0][0] = 200
+    self.init_q[2][0][1] = -400
+
+    self.init_q[3][0][0] = 100
+    self.init_q[3][0][1] = -400
+
+    self.init_q[4][0][0] = -400
+    self.init_q[4][0][1] = -400
+
+    self.init_q[5][0][0] = -300
+    self.init_q[5][0][1] = -400
+
+    self.init_q[6][0][0] = -200
+    self.init_q[6][0][1] = -400
+
+    self.init_q[7][0][0] = -100
+    self.init_q[7][0][1] = -400
     '''
 
     for i in range(self.n_drones):
+      #src = [random.uniform(self.p_bounds[0][0], self.p_bounds[0][1]), 
+      #       random.uniform(self.p_bounds[0][0], self.p_bounds[0][1])]
+      src = [self.init_q[i][0][0], self.init_q[i][0][1]]
+
+      #dest = [random.uniform(self.p_bounds[0][0], self.p_bounds[0][1]), random.uniform(self.p_bounds[0][0], self.p_bounds[0][1])]
+      dest = [self.gt[i][0], self.gt[i][1]]
+
+      self.traj_line(i, src, dest)
+      
+      '''
       self.init_q[i][0][0] = random.uniform(self.p_bounds[0][0], self.p_bounds[0][1])
       self.init_q[i][0][1] = random.uniform(self.p_bounds[1][0], self.p_bounds[1][1])
 
@@ -117,6 +192,7 @@ class env():
         else:
           self.init_q[i][n][0] = self.gt[i][0]
           self.init_q[i][n][1] = self.gt[i][1]
+      '''
 
     #drone power init
     for n in range(self.M):
@@ -134,6 +210,22 @@ class env():
 
     #print(self.init_p, self.init_q)
     print(self.gt)
+
+  def traj_line(self, i, src, dest):
+    #self.init_q[i][0][0] = src[0]
+    #self.init_q[i][0][1] = src[1]
+
+    dist = utils.dist(self.gt[i], self.init_q[i][0])
+
+    x_step = (dest[0] - src[0]) * self.v_max / dist
+    y_step = (dest[1] - src[1]) * self.v_max / dist
+    for n in range(self.M):
+      if n < dist / self.v_max:
+        self.init_q[i][n][0] = src[0] + x_step * n
+        self.init_q[i][n][1] = src[1] + y_step * n
+      else:
+        self.init_q[i][n][0] = dest[0]
+        self.init_q[i][n][1] = dest[1]
 
   def tick(self):
     t_start = time.time()

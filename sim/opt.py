@@ -276,7 +276,7 @@ class ma_sca():
     #  pass
 
     self.p = np.multiply(self.a, self.a)
-    #time.sleep(60)
+    time.sleep(10)
     return self.p, self.q
 
   #update graph given new set of target positions
@@ -414,8 +414,13 @@ class ma_sca():
     for freq in F:
       freq_assignment_dict[freq] = []
 
+    #proposed
     for i, freq in enumerate(f):
       freq_assignment_dict[freq].append(i)
+
+    #FDMA
+    #for i, freq in enumerate(F):
+    #  freq_assignment_dict[freq].append(i)
 
     #print("[color] time:", t_end - t_start)
     print("[color] range_fac:", range_factor)
@@ -587,7 +592,7 @@ def optimize_shen(a, q, p, d, I, gt, gamma, v_max=0.2, h_min=0.2):
   #print(K,M)
   #update a, q by solving complex problem 23
   m = mf.Model('shen_sca')
-  var_a = m.variable('a', [K, M], mf.Domain.inRange(0.01, 31.6))
+  var_a = m.variable('a', [K, M], mf.Domain.inRange(0.1, 31.6))
   var_q = m.variable('q', [K, M, 2], mf.Domain.inRange(-500, 500))
   var_dist = m.variable('dist_expr', [K, K, M], mf.Domain.greaterThan(0.0))
   var_inner = m.variable('inner_div', [K, K, M])

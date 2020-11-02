@@ -138,9 +138,9 @@ class plotter():
       size = 64
       if freqs[k] == 0.0:
         color = 'red'
-      elif freqs[k] > 5.0:
+      elif freqs[k] >= 5.0:
         color = 'gold'
-      elif freqs[k] > 2.4:
+      elif freqs[k] >= 2.4:
         color = 'green'
       else:
         color = 'blue'
